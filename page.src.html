@@ -1,0 +1,654 @@
+<title>SBAS Message Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: instrument-panel workbench. Header + summary strip, then a message
+   list (left) beside the selected frame (right): raw line, bit map, inspector,
+   field table. Stacks to one column on phones. */
+:root {
+  --bg: #dfe4e7;
+  --panel: #f3f5f6;
+  --ink: #1a252b;
+  --ink-2: #44545d;
+  --ink-3: #6f7f88;
+  --line: #c6cfd4;
+  --accent: #0d6a86;
+  --accent-ink: #ffffff;
+  --accent-soft: #cfe3ea;
+  --ok: #1d7f47;
+  --bad: #b8322b;
+  --warn: #9a6512;
+  --t0: #d4e2f6; --t1: #f4d9c8; --t2: #cbe7dc; --t3: #f0e3bb; --t4: #ebd2de; --t5: #d8d3ee;
+  --th: #d9dfe2; --tc: #e2dcd2; --ts: #e9edef; --hatch: #d3dadd;
+  --hl: #0d6a86;
+  --font-ui: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "IBM Plex Sans", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b2328; --panel: #232d33; --ink: #e2e9ed; --ink-2: #aab8c0; --ink-3: #7f8f98; --line: #36444c;
+    --accent: #52b9d6; --accent-ink: #062029; --accent-soft: #1d3e4a; --ok: #4cc27f; --bad: #f0746b; --warn: #e2ad55;
+    --t0: #263a54; --t1: #4b3123; --t2: #1f4236; --t3: #463b1e; --t4: #482a39; --t5: #322d57;
+    --th: #2e3a41; --tc: #3a352e; --ts: #283238; --hatch: #313e45; --hl: #52b9d6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b2328; --panel: #232d33; --ink: #e2e9ed; --ink-2: #aab8c0; --ink-3: #7f8f98; --line: #36444c;
+  --accent: #52b9d6; --accent-ink: #062029; --accent-soft: #1d3e4a; --ok: #4cc27f; --bad: #f0746b; --warn: #e2ad55;
+  --t0: #263a54; --t1: #4b3123; --t2: #1f4236; --t3: #463b1e; --t4: #482a39; --t5: #322d57;
+  --th: #2e3a41; --tc: #3a352e; --ts: #283238; --hatch: #313e45; --hl: #52b9d6;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: var(--font-ui); font-size: 14px; line-height: 1.45; padding: 0 16px 32px; }
+.wrap { max-width: 1440px; margin: 0 auto; display: grid; gap: 14px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+button, input { font: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; padding-block: 20px 4px; }
+.brand h1 { font-size: 26px; font-weight: 600; letter-spacing: 0.01em; }
+.brand p { margin: 2px 0 0; color: var(--ink-2); max-width: 64ch; }
+.load { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: var(--radius); padding: 7px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.theme { min-width: 92px; display: inline-flex; align-items: center; gap: 6px; }
+.btn.theme svg { width: 15px; height: 15px; flex: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 500; }
+.hint { color: var(--ink-3); font-size: 12px; }
+.drop-active::after { content: "Drop .ems files to open them"; position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--bg) 85%, transparent); display: grid; place-items: center; font: 600 20px var(--font-display); color: var(--accent); z-index: 50; }
+
+/* summary strip */
+.summary { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; }
+.stat { display: grid; }
+.stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.stat .v { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; }
+.stat .v.bad { color: var(--bad); }
+.stat .v.ok { color: var(--ok); }
+.sample-tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; background: var(--accent-soft); color: var(--accent); padding: 2px 7px; border-radius: 99px; }
+.notice { color: var(--warn); font-size: 13px; }
+
+/* filters */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.filters .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin-right: 4px; }
+.chip { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 99px; padding: 2px 9px; font: 12px var(--font-data); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip .n { opacity: 0.7; margin-left: 4px; }
+
+/* main */
+.main { display: grid; grid-template-columns: minmax(300px, 0.85fr) minmax(0, 2fr); gap: 14px; align-items: start; }
+.pane { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+.list-pane { position: sticky; top: env(safe-area-inset-top, 0px); }
+.list-head, .row { display: grid; grid-template-columns: 78px 40px 48px minmax(0, 1fr) 18px; gap: 8px; align-items: center; padding: 0 10px; }
+.list-head { height: 32px; border-bottom: 1px solid var(--line); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.list { height: min(72vh, 760px); overflow-y: auto; position: relative; }
+.row { position: absolute; left: 0; right: 0; height: 32px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); font-size: 13px; }
+.row:hover { background: var(--accent-soft); }
+.row.sel { background: var(--accent); color: var(--accent-ink); }
+.row .t, .row .p { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; }
+.row .s { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.row.sel .s { color: inherit; }
+.mt { font: 600 11px var(--font-data); border-radius: 4px; padding: 1px 0; text-align: center; background: var(--th); color: var(--ink); }
+.row.sel .mt { background: color-mix(in srgb, var(--accent-ink) 22%, transparent); color: inherit; }
+.crc-ok { color: var(--ok); } .crc-bad { color: var(--bad); font-weight: 700; }
+.row.sel .crc-ok { color: inherit; }
+.empty { padding: 24px; color: var(--ink-3); }
+
+/* detail */
+.detail { display: grid; gap: 0; }
+.sec { padding: 14px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.sec:last-child { border-bottom: 0; }
+.sec h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.sec h2 .aside { text-transform: none; letter-spacing: 0; font-family: var(--font-ui); font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.msg-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.msg-title h3 { font-size: 22px; font-weight: 600; }
+.msg-title .meta { color: var(--ink-2); font-family: var(--font-data); font-size: 13px; }
+.badge { font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 99px; }
+.badge.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.badge.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+.badge.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+
+.rawline { overflow-x: auto; font-family: var(--font-data); font-size: 13px; white-space: pre; padding: 8px 10px; background: var(--ts); border-radius: 4px; }
+.col { border-radius: 3px; padding: 1px 2px; cursor: help; }
+.col:hover, .col.on { background: var(--accent-soft); color: var(--accent); }
+
+/* bit map */
+.bitwrap { overflow-x: auto; }
+.bits { display: grid; grid-template-columns: 34px repeat(32, minmax(16px, 1fr)); gap: 2px; min-width: 600px; font-family: var(--font-data); font-size: 12px; }
+.bits.narrow { grid-template-columns: 34px repeat(16, minmax(16px, 1fr)); min-width: 0; }
+.bits .off { color: var(--ink-3); font-size: 10px; text-align: right; padding-right: 4px; align-self: center; }
+.bit { height: 24px; display: grid; place-items: center; border-radius: 2px; cursor: pointer; user-select: none; color: var(--ink-2); position: relative; }
+.bit.one { color: var(--ink); font-weight: 600; }
+.bit.byte-start { margin-left: 3px; }
+.bit.k-t0 { background: var(--t0); } .bit.k-t1 { background: var(--t1); } .bit.k-t2 { background: var(--t2); }
+.bit.k-t3 { background: var(--t3); } .bit.k-t4 { background: var(--t4); } .bit.k-t5 { background: var(--t5); }
+.bit.k-h { background: var(--th); } .bit.k-c { background: var(--tc); }
+.bit.k-s { background: repeating-linear-gradient(135deg, var(--ts) 0 4px, var(--hatch) 4px 6px); color: var(--ink-3); }
+.bit.k-p { background: transparent; border: 1px dashed var(--line); color: var(--ink-3); }
+.bit.mask-on { box-shadow: inset 0 -3px 0 var(--accent); }
+.bit.hl { outline: 2px solid var(--hl); outline-offset: -1px; z-index: 1; }
+.bit.cur { background: var(--accent) !important; color: var(--accent-ink); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 5px; }
+
+/* inspector */
+.inspector { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--panel); }
+.insp-empty { color: var(--ink-3); }
+.insp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 6px; }
+.insp-head strong { font: 600 18px var(--font-display); }
+.insp-head span { color: var(--ink-2); font-size: 13px; }
+.insp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 18px; margin: 0 0 8px; }
+.insp-grid div { min-width: 0; }
+.insp-grid dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.insp-grid dd { margin: 0; font-family: var(--font-data); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.insp-grid dd.meaning { font-family: var(--font-ui); font-weight: 500; }
+.insp-desc { margin: 0; color: var(--ink-2); max-width: 75ch; }
+.via { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
+.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; font: inherit; }
+.pin-note { font-size: 11px; color: var(--ink-3); margin-left: auto; }
+
+/* table */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 4px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); vertical-align: top; }
+td.num, td.bin { font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.bin { color: var(--ink-2); font-size: 12px; }
+tr.grp td { background: var(--ts); font-weight: 600; font-size: 12px; color: var(--ink-2); padding-top: 6px; }
+tr.f { cursor: pointer; }
+tr.f td:first-child { border-left: 4px solid transparent; }
+tr.f.k-t0 td:first-child { border-left-color: var(--t0); } tr.f.k-t1 td:first-child { border-left-color: var(--t1); }
+tr.f.k-t2 td:first-child { border-left-color: var(--t2); } tr.f.k-t3 td:first-child { border-left-color: var(--t3); }
+tr.f.k-t4 td:first-child { border-left-color: var(--t4); } tr.f.k-t5 td:first-child { border-left-color: var(--t5); }
+tr.f.k-h td:first-child { border-left-color: var(--th); } tr.f.k-c td:first-child { border-left-color: var(--tc); }
+tr.f.k-s td:first-child, tr.f.k-p td:first-child { border-left-color: var(--hatch); }
+tr.f.k-s, tr.f.k-p { color: var(--ink-3); }
+tr.f:hover td, tr.f.hl td { background: var(--accent-soft); }
+tr.f.pinned td { background: var(--accent-soft); box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent); }
+.toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-2); text-transform: none; letter-spacing: 0; font-family: var(--font-ui); font-weight: 400; }
+.errors { font-size: 12px; color: var(--ink-2); }
+.errors summary { cursor: pointer; color: var(--warn); }
+.errors pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-data); }
+footer { color: var(--ink-3); font-size: 12px; max-width: 90ch; }
+footer a { color: var(--accent); }
+
+@media (max-width: 900px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .list-pane { position: static; }
+  .list { height: 300px; }
+  .inspector { position: static; }
+}
+@media (max-width: 520px) {
+  .list-head, .row { grid-template-columns: 64px 34px 40px minmax(0, 1fr) 16px; gap: 6px; padding: 0 8px; }
+  .brand h1 { font-size: 22px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand">
+      <h1>SBAS Message Explorer</h1>
+      <p>Open an EMS or GNSS-SDR <span class="mono">.ems</span> file and inspect every SBAS L1 frame bit by bit, decoded per RTCA DO-229 Appendix A. Files are read in your browser and never uploaded.</p>
+    </div>
+    <div class="load">
+      <input type="file" id="file" accept=".ems,.EMS,.sbs,.txt,text/plain" multiple hidden>
+      <button class="btn primary" id="open">Open .ems files</button>
+      <button class="btn" id="sample">Load sample</button>
+      <span class="hint">or drop files anywhere, or paste lines</span>
+      <button class="btn theme" id="theme" type="button" title="Color theme: follows your system setting">Auto</button>
+    </div>
+  </header>
+
+  <section class="summary" id="summary" aria-live="polite"></section>
+  <div class="filters" id="filters"></div>
+
+  <div class="main">
+    <section class="pane list-pane" aria-label="Messages">
+      <div class="list-head"><span>Time</span><span>PRN</span><span>Type</span><span>Content</span><span title="CRC">✓</span></div>
+      <div class="list" id="list" tabindex="0" aria-label="Message list. Use arrow keys to move."></div>
+    </section>
+    <section class="pane detail" id="detail" aria-label="Selected message"></section>
+  </div>
+
+  <footer>
+    Layouts follow RTCA DO-229 Appendix A; IGP band geometry follows RTKLIB. Message slots and grid points are resolved through the PRN mask (MT1) and IGP mask (MT18) found anywhere in the loaded file with the matching issue of data, so a message received before its mask is still explained. Line format explanations are inspired by the <a href="https://gage.upc.edu" target="_blank" rel="noopener">gAGE</a> file format explorers.
+    <br><a href="https://minhaj6.github.io/tools/">← More tools</a> · Minhaj Uddin Ahmad
+  </footer>
+</div>
+
+<script>
+/*DECODER*/
+</script>
+<script>
+const SAMPLE_NAME = "sbas_msg_PRN133.ems";
+const SAMPLE = /*SAMPLE*/;
+
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const state = {
+  files: [], msgs: [], ctx: null, view: [], sel: 0, isSample: false, errors: [],
+  types: new Set(), prns: new Set(), crcOnly: false, showSpare: true,
+  fields: [], pinned: null, hover: null, hoverBit: null, hoverCol: null,
+};
+
+/* ---------- loading ---------- */
+
+function loadTexts(list, isSample) {
+  const msgs = [], errors = [], files = [];
+  let fmtSeen = new Set();
+  for (const { name, text } of list) {
+    const r = parseFile(text);
+    r.msgs.forEach((m) => (m.file = name));
+    r.errors.forEach((e) => (e.file = name));
+    msgs.push(...r.msgs); errors.push(...r.errors);
+    if (r.format) fmtSeen.add(r.format);
+    files.push({ name, count: r.msgs.length, comments: r.comments, format: r.format });
+  }
+  // Absolute-time files sort into one timeline; receiver-time files keep per-file order.
+  if (list.length > 1) msgs.sort((a, b) => a.tow - b.tow || a.prn - b.prn);
+  msgs.forEach((m, i) => (m.index = i));
+  Object.assign(state, { files, msgs, errors, ctx: buildContext(msgs), isSample, sel: 0, pinned: null, hover: null, types: new Set(), prns: new Set(), crcOnly: false });
+  state.formats = fmtSeen;
+  applyFilters();
+  renderSummary();
+  renderFilters();
+  select(state.view.length ? state.view[0] : null, false, true);
+}
+
+$("#open").addEventListener("click", () => $("#file").click());
+
+// theme: auto (system) -> light -> dark; the choice is remembered per browser
+const ICON = (d) => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">' + d + '</svg>';
+const THEMES = {
+  auto: ["Auto", "follows your system setting", ICON('<circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/>')],
+  light: ["Light", "light", ICON('<circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1"/>')],
+  dark: ["Dark", "dark", ICON('<path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z"/>')],
+};
+function applyTheme(mode) {
+  if (mode === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", mode);
+  const [label, tip, icon] = THEMES[mode];
+  $("#theme").innerHTML = icon + "<span>" + label + "</span>";
+  $("#theme").title = "Color theme: " + tip + " (click to change)";
+}
+let themeMode = "auto";
+try { const saved = localStorage.getItem("sbas-explorer-theme"); if (saved in THEMES) themeMode = saved; } catch (e) {}
+applyTheme(themeMode);
+$("#theme").addEventListener("click", () => {
+  themeMode = { auto: "light", light: "dark", dark: "auto" }[themeMode];
+  applyTheme(themeMode);
+  try { localStorage.setItem("sbas-explorer-theme", themeMode); } catch (e) {}
+});
+$("#file").addEventListener("change", async (e) => {
+  const fl = [...e.target.files];
+  if (fl.length) loadTexts(await Promise.all(fl.map(async (f) => ({ name: f.name, text: await f.text() }))), false);
+  e.target.value = "";
+});
+$("#sample").addEventListener("click", () => loadTexts([{ name: SAMPLE_NAME, text: SAMPLE }], true));
+let dragDepth = 0;
+document.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; document.body.classList.add("drop-active"); });
+document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("drop-active"); } });
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", async (e) => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("drop-active");
+  const fl = [...(e.dataTransfer?.files || [])];
+  if (fl.length) loadTexts(await Promise.all(fl.map(async (f) => ({ name: f.name, text: await f.text() }))), false);
+});
+document.addEventListener("paste", (e) => {
+  if (e.target.closest && e.target.closest("input, textarea")) return;
+  const text = e.clipboardData?.getData("text");
+  if (text && /[0-9A-Fa-f]{60,}/.test(text)) loadTexts([{ name: "pasted lines", text }], false);
+});
+
+/* ---------- summary & filters ---------- */
+
+function timeLabel(m) {
+  if (m.format === "ems") return m.date.toISOString().slice(11, 19);
+  return m.week === 0 ? m.tow.toFixed(3) : m.tow.toFixed(1);
+}
+function timeLong(m) {
+  if (m.format === "ems") return m.date.toISOString().replace("T", " ").slice(0, 19) + " GPST";
+  return m.week === 0 ? `t = ${m.tow.toFixed(3)} s after recording start` : `GPS week ${m.week}, TOW ${m.tow} s`;
+}
+
+function renderSummary() {
+  const s = state, el = $("#summary");
+  if (!s.msgs.length) {
+    el.innerHTML = `<div class="stat"><span class="k">File</span><span class="v">${esc(s.files.map((f) => f.name).join(", ") || "none")}</span></div><span class="notice">No SBAS frames found. Expected lines like <span class="mono">0 8.209 133 25 : 9A66…</span> or <span class="mono">133 26 06 24 21 36 08 25 9A66…</span>.</span>`;
+    return;
+  }
+  const bad = s.msgs.filter((m) => !m.crcOk).length;
+  const prns = [...new Set(s.msgs.map((m) => m.prn))].sort((a, b) => a - b);
+  const span = s.msgs[s.msgs.length - 1].tow - s.msgs[0].tow;
+  const fmtName = [...s.formats].map((f) => (f === "ems" ? "ESA EMS" : "GNSS-SDR / RTKLIB")).join(" + ");
+  const mism = s.msgs.filter((m) => m.typeCol != null && m.typeCol !== m.mt).length;
+  el.innerHTML = `
+    ${s.isSample ? `<span class="sample-tag">Sample</span>` : ""}
+    <div class="stat"><span class="k">File${s.files.length > 1 ? "s" : ""}</span><span class="v">${esc(s.files.map((f) => f.name).join(", "))}</span></div>
+    <div class="stat"><span class="k">Format</span><span class="v">${fmtName}</span></div>
+    <div class="stat"><span class="k">GEO PRN</span><span class="v">${prns.join(", ")}</span></div>
+    <div class="stat"><span class="k">Frames</span><span class="v">${s.msgs.length}</span></div>
+    <div class="stat"><span class="k">Span</span><span class="v">${span.toFixed(0)} s</span></div>
+    <div class="stat"><span class="k">CRC failures</span><span class="v ${bad ? "bad" : "ok"}">${bad}</span></div>
+    ${mism ? `<div class="stat"><span class="k">Type column ≠ bits</span><span class="v bad">${mism}</span></div>` : ""}
+    ${s.errors.length ? `<details class="errors"><summary>${s.errors.length} line(s) not read</summary><pre>${esc(s.errors.slice(0, 20).map((e) => `${e.file}:${e.line}: ${e.why}\n  ${e.text.slice(0, 90)}`).join("\n"))}</pre></details>` : ""}`;
+}
+
+function renderFilters() {
+  const s = state, el = $("#filters");
+  if (!s.msgs.length) { el.innerHTML = ""; return; }
+  const counts = new Map();
+  for (const m of s.msgs) counts.set(m.mt, (counts.get(m.mt) || 0) + 1);
+  const prns = [...new Set(s.msgs.map((m) => m.prn))].sort((a, b) => a - b);
+  let html = `<span class="lbl">Type</span>`;
+  for (const [mt, n] of [...counts].sort((a, b) => a[0] - b[0]))
+    html += `<button class="chip" data-mt="${mt}" aria-pressed="${s.types.has(mt)}" title="${esc(MT_NAMES[mt] || "unassigned")}">MT${mt}<span class="n">${n}</span></button>`;
+  if (prns.length > 1) {
+    html += `<span class="lbl" style="margin-left:12px">GEO</span>`;
+    for (const p of prns) html += `<button class="chip" data-prn="${p}" aria-pressed="${s.prns.has(p)}">${p}</button>`;
+  }
+  html += `<button class="chip" data-crc="1" aria-pressed="${s.crcOnly}" style="margin-left:12px">CRC failures only</button>`;
+  el.innerHTML = html;
+}
+$("#filters").addEventListener("click", (e) => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  const s = state;
+  if (b.dataset.mt) { const v = +b.dataset.mt; s.types.has(v) ? s.types.delete(v) : s.types.add(v); }
+  else if (b.dataset.prn) { const v = +b.dataset.prn; s.prns.has(v) ? s.prns.delete(v) : s.prns.add(v); }
+  else if (b.dataset.crc) s.crcOnly = !s.crcOnly;
+  const cur = s.msgs[s.sel];
+  applyFilters(); renderFilters();
+  select(cur && s.view.includes(cur.index) ? cur.index : s.view.length ? s.view[0] : null);
+});
+
+function applyFilters() {
+  const s = state;
+  s.view = s.msgs.filter((m) => (!s.types.size || s.types.has(m.mt)) && (!s.prns.size || s.prns.has(m.prn)) && (!s.crcOnly || !m.crcOk)).map((m) => m.index);
+  s.summaries = s.summaries && s.summaries.length === s.msgs.length ? s.summaries : new Array(s.msgs.length);
+  const list = $("#list");
+  list.innerHTML = s.view.length ? `<div style="height:${s.view.length * ROW}px"></div>` : `<div class="empty">No messages match the filters.</div>`;
+  list.scrollTop = 0;
+  drawRows();
+}
+
+/* ---------- virtualised message list ---------- */
+
+const ROW = 32;
+function drawRows() {
+  const s = state, list = $("#list");
+  if (!s.view.length) return;
+  const top = list.scrollTop, h = list.clientHeight || 600;
+  const a = Math.max(0, Math.floor(top / ROW) - 8), b = Math.min(s.view.length, Math.ceil((top + h) / ROW) + 8);
+  const spacer = list.firstElementChild;
+  [...list.querySelectorAll(".row")].forEach((r) => r.remove());
+  let html = "";
+  for (let i = a; i < b; i++) {
+    const m = s.msgs[s.view[i]];
+    if (s.summaries[m.index] == null) { try { s.summaries[m.index] = summarize(m, s.ctx); } catch (e) { s.summaries[m.index] = ""; } }
+    html += `<div class="row${m.index === s.sel ? " sel" : ""}" style="top:${i * ROW}px" data-i="${m.index}" role="option" aria-selected="${m.index === s.sel}">
+      <span class="t">${timeLabel(m)}</span><span class="p">${m.prn}</span><span class="mt">${m.mt}</span>
+      <span class="s">${esc(s.summaries[m.index] || MT_NAMES[m.mt] || "")}</span><span class="${m.crcOk ? "crc-ok" : "crc-bad"}" title="${m.crcOk ? "CRC ok" : "CRC failed"}">${m.crcOk ? "✓" : "✗"}</span></div>`;
+  }
+  spacer.insertAdjacentHTML("afterend", html);
+}
+$("#list").addEventListener("scroll", () => requestAnimationFrame(drawRows));
+$("#list").addEventListener("click", (e) => { const r = e.target.closest(".row"); if (r) select(+r.dataset.i); });
+$("#list").addEventListener("keydown", (e) => {
+  const s = state; const pos = s.view.indexOf(s.sel);
+  let next = null;
+  if (e.key === "ArrowDown") next = s.view[Math.min(s.view.length - 1, pos + 1)];
+  else if (e.key === "ArrowUp") next = s.view[Math.max(0, pos - 1)];
+  else if (e.key === "PageDown") next = s.view[Math.min(s.view.length - 1, pos + 15)];
+  else if (e.key === "PageUp") next = s.view[Math.max(0, pos - 15)];
+  if (next != null) { e.preventDefault(); select(next, true); }
+});
+function scrollToSel() {
+  const s = state, list = $("#list"); const pos = s.view.indexOf(s.sel);
+  if (pos < 0) return;
+  const y = pos * ROW;
+  if (y < list.scrollTop) list.scrollTop = y;
+  else if (y + ROW > list.scrollTop + list.clientHeight) list.scrollTop = y - list.clientHeight + ROW;
+}
+
+/* ---------- detail ---------- */
+
+const KIND_CLASS = { header: "k-h", crc: "k-c", spare: "k-s", pad: "k-p" };
+
+const COL_INFO = {
+  week: (m) => ({ name: "GPS week", text: m.week === 0 ? "0 here: GNSS-SDR writes 0 when it has no absolute time. The next column is then seconds since the recording started, not GPS time of week." : "GPS week number of the time tag." }),
+  tow: (m) => ({ name: m.week === 0 ? "Receiver time" : "Time of week", text: m.week === 0 ? `${m.tow} s since the start of the recording, when the receiver finished decoding this frame. SBAS frames arrive once per second.` : `GPS time of week in seconds: ${m.tow} s.` }),
+  prn: (m) => ({ name: "GEO PRN", text: `PRN ${m.prn} of the geostationary satellite that broadcast the frame. Masks and corrections are tracked separately for each GEO.` }),
+  type: (m) => ({ name: "Message type column", text: m.typeCol === m.mt ? `MT${m.typeCol}, as written by the receiver. It matches the 6-bit type field inside the frame.` : `The file says MT${m.typeCol} but the frame bits say MT${m.mt}. The explorer trusts the bits.` }),
+  sep: () => ({ name: "Separator", text: "Colon separating the time tag from the frame, in the GNSS-SDR and RTKLIB format." }),
+  hex: (m) => ({ name: "Frame (hex)", text: `${m.hex.length} hexadecimal digits = ${m.nbits} bits: the 250-bit SBAS frame plus ${m.nbits - 250} padding bits. The bit map below breaks it into fields.` }),
+  yy: (m) => ({ name: "Year", text: `Two-digit year (${m.date.getUTCFullYear()}). The EMS time tag is in GPS time.` }),
+  mon: () => ({ name: "Month", text: "Month of the time tag." }),
+  day: () => ({ name: "Day", text: "Day of month of the time tag." }),
+  hh: () => ({ name: "Hour", text: "Hour of the time tag, GPS time." }),
+  min: () => ({ name: "Minute", text: "Minute of the time tag." }),
+  ss: () => ({ name: "Second", text: "Second of the time tag. EMS files give whole seconds." }),
+};
+
+function select(i, keyboard, pinFirst) {
+  const s = state;
+  if (i == null || !s.msgs[i]) { s.sel = -1; $("#detail").innerHTML = `<div class="sec empty">Select a message.</div>`; drawRows(); return; }
+  s.sel = i; s.pinned = null; s.hover = null; s.hoverBit = null; s.hoverCol = null;
+  const m = s.msgs[i];
+  s.fields = decodeMessage(m, s.ctx);
+  // colour assignment: data fields cycle six tints in order
+  let c = 0;
+  for (const f of s.fields) f.cls = KIND_CLASS[f.kind] || `k-t${c++ % 6}`;
+  s.bitField = new Int16Array(m.nbits).fill(-1);
+  s.fields.forEach((f, k) => { for (let b = f.start; b < f.start + f.len && b < m.nbits; b++) s.bitField[b] = k; });
+  if (pinFirst) {
+    const k = s.fields.findIndex((f) => f.kind === "slot" && f.sat && f.sat.name);
+    s.pinned = k >= 0 ? k : s.fields.findIndex((f) => f.kind === "data");
+  }
+  renderDetail();
+  if (s.pinned != null) setHighlight(s.pinned);
+  drawRows();
+  if (keyboard) scrollToSel();
+}
+
+function renderDetail() {
+  const s = state, m = s.msgs[s.sel];
+  const typeOk = m.typeCol == null || m.typeCol === m.mt;
+  const preOk = PREAMBLES.includes(m.preamble);
+  const cols = m.cols.map(([k, v], j) => `<span class="col" data-col="${j}">${esc(v)}</span>`).join(" ");
+  const per = bitsPerRow();
+  let bits = "";
+  for (let r = 0; r < m.nbits; r += per) {
+    bits += `<span class="off">${r}</span>`;
+    for (let b = r; b < r + per; b++) {
+      if (b >= m.nbits) { bits += `<span></span>`; continue; }
+      const f = s.fields[s.bitField[b]];
+      const isMask = f && f.kind === "mask";
+      bits += `<span class="bit ${f ? f.cls : ""}${m.bits[b] ? " one" : ""}${isMask && m.bits[b] ? " mask-on" : ""}${b % 8 === 0 && b % per ? " byte-start" : ""}" data-b="${b}">${m.bits[b]}</span>`;
+    }
+  }
+  $("#detail").innerHTML = `
+    <div class="sec">
+      <div class="msg-title">
+        <h3>MT${m.mt} · ${esc(MT_NAMES[m.mt] || "Unassigned type")}</h3>
+        <span class="meta">GEO ${m.prn} · ${esc(timeLong(m))}</span>
+        <span class="badge ${m.crcOk ? "ok" : "bad"}">${m.crcOk ? "CRC ok" : "CRC failed"}</span>
+        ${preOk ? "" : `<span class="badge bad">Bad preamble</span>`}
+        ${typeOk ? "" : `<span class="badge warn">Type column says MT${m.typeCol}</span>`}
+      </div>
+    </div>
+    <div class="sec">
+      <h2>File line <span class="aside">${esc(m.file)}, line ${m.line} · tap a column</span></h2>
+      <div class="rawline" id="rawline">${cols}</div>
+    </div>
+    <div class="sec">
+      <h2>Bits <span class="aside">${m.nbits} bits, bit 0 first · hover to explore, click to pin</span></h2>
+      <div class="bitwrap"><div class="bits${per === 16 ? " narrow" : ""}" id="bits">${bits}</div></div>
+      <div class="legend">
+        <span><i style="background:var(--th)"></i>Frame header</span>
+        <span><i style="background:var(--t0)"></i><i style="background:var(--t1)"></i><i style="background:var(--t2)"></i>Data fields</span>
+        <span><i style="background:repeating-linear-gradient(135deg,var(--ts) 0 3px,var(--hatch) 3px 5px)"></i>Spare</span>
+        <span><i style="background:var(--tc)"></i>CRC-24Q</span>
+        ${m.nbits > 250 ? `<span><i style="border:1px dashed var(--line)"></i>Padding</span>` : ""}
+      </div>
+    </div>
+    <div class="sec inspector" id="inspector"></div>
+    <div class="sec">
+      <h2>Fields <label class="toggle"><input type="checkbox" id="spare" ${s.showSpare ? "checked" : ""}> Show spare and padding</label></h2>
+      <div class="tablewrap"><table id="ftable"></table></div>
+    </div>`;
+  renderTable();
+  renderInspector();
+  $("#spare").addEventListener("change", (e) => { s.showSpare = e.target.checked; renderTable(); });
+}
+
+function bitsPerRow() { return window.matchMedia("(max-width: 640px)").matches ? 16 : 32; }
+let lastPer = null;
+window.addEventListener("resize", () => {
+  const per = bitsPerRow();
+  if (lastPer !== null && per !== lastPer && state.sel >= 0) { const keep = state.pinned; renderDetail(); state.pinned = keep; if (keep != null) setHighlight(keep); }
+  lastPer = per;
+});
+
+function binText(f) {
+  if (f.bitsText == null) return `${f.len} bits`;
+  if (f.len <= 32) return f.bitsText;
+  return f.bitsText.slice(0, 12) + "…" + f.bitsText.slice(-8);
+}
+function valueText(f) {
+  if (f.raw == null) return "";
+  if (f.value == null) return "";
+  const v = Math.abs(f.value) >= 1e6 ? f.value.toFixed(2) : fmt(f.value, 8);
+  return `${v}${f.unit ? " " + f.unit : ""}`;
+}
+
+function renderTable() {
+  const s = state;
+  let html = `<thead><tr><th>Field</th><th>Bits</th><th>Binary</th><th>Raw</th><th>Value</th><th>Meaning</th></tr></thead><tbody>`;
+  let lastGroup = null;
+  s.fields.forEach((f, k) => {
+    if (!s.showSpare && (f.kind === "spare" || f.kind === "pad")) return;
+    const g = f.groupLabel || f.group;
+    if (g !== lastGroup) { html += `<tr class="grp"><td colspan="6">${esc(g)}</td></tr>`; lastGroup = g; }
+    html += `<tr class="f ${f.cls}${s.pinned === k ? " pinned" : ""}" data-f="${k}" tabindex="0">
+      <td>${esc(f.name)}</td>
+      <td class="num">${f.start}${f.len > 1 ? "–" + (f.start + f.len - 1) : ""}</td>
+      <td class="bin">${esc(binText(f))}</td>
+      <td class="num">${f.raw == null ? "" : f.raw}</td>
+      <td class="num">${esc(valueText(f))}</td>
+      <td>${esc(f.meaningText)}</td></tr>`;
+  });
+  $("#ftable").innerHTML = html + "</tbody>";
+}
+
+function viaHtml(label, via) {
+  if (!via) return "";
+  return ` <button class="link" data-goto="${via.index}">${esc(label)} at ${esc(timeLabel(via))}${via.format === "ems" ? "" : " s"} (line ${via.line})</button>`;
+}
+
+function renderInspector() {
+  const s = state, m = s.msgs[s.sel], el = $("#inspector");
+  if (!el) return;
+  if (s.hoverCol != null) {
+    const [k, v] = m.cols[s.hoverCol];
+    const info = COL_INFO[k] ? COL_INFO[k](m) : { name: k, text: "" };
+    el.innerHTML = `<div class="insp-head"><strong>${esc(info.name)}</strong><span class="mono">${esc(v.length > 24 ? v.slice(0, 24) + "…" : v)}</span></div><p class="insp-desc">${esc(info.text)}</p>`;
+    return;
+  }
+  const k = s.hover != null ? s.hover : s.pinned;
+  if (k == null) {
+    el.innerHTML = `<div class="insp-head"><strong>Inspector</strong><span>Hover or tap any bit, field or column to see what it means.</span></div>`;
+    return;
+  }
+  const f = s.fields[k];
+  const signedNote = f.signed ? " (two's complement)" : "";
+  let bitNote = "";
+  if (s.hover != null && s.hoverBit != null && f.bitLabel) {
+    const i = s.hoverBit - f.start;
+    bitNote = `<div><dt>This bit</dt><dd>${esc(f.bitLabel(i))} → ${m.bits[s.hoverBit] ? "set" : "not set"}</dd></div>`;
+  }
+  let via = "";
+  if (f.sat && f.sat.via) via = `<p class="via">Slot ${f.slotResolved ?? f.raw} resolved through the PRN mask:${viaHtml("MT1", f.sat.via)}${f.sat.beyond ? ` · the mask has ${f.sat.size} satellites, so this slot is filler.` : ""}</p>`;
+  else if (f.sat && f.sat.missing) via = `<p class="via">Cannot resolve the slot: ${esc(f.sat.missing)}.</p>`;
+  if (f.igp && f.igp.via) via = `<p class="via">Grid point ${f.igpMaskIndex + 1} of the band mask${f.igp.coords ? ` (${latLonText(f.igp.coords)})` : ""}:${viaHtml("MT18", f.igp.via)}${f.igp.beyond ? ` · the mask has ${f.igp.size} points, so this entry is filler.` : ""}</p>`;
+  else if (f.igp && f.igp.missing) via = `<p class="via">Cannot place this grid point: ${esc(f.igp.missing)}. MT18 masks repeat every few minutes; a longer recording will usually contain one.</p>`;
+  el.innerHTML = `
+    <div class="insp-head"><strong>${esc(f.name)}</strong><span>${esc(f.groupLabel || f.group || "")}</span>${s.pinned === k && s.hover == null ? `<span class="pin-note">Pinned · click again to release</span>` : ""}</div>
+    <dl class="insp-grid">
+      <div><dt>Bits</dt><dd>${f.start}–${f.start + f.len - 1} (${f.len} bit${f.len > 1 ? "s" : ""})</dd></div>
+      <div><dt>Binary</dt><dd>${esc(f.bitsText != null ? f.bitsText : binText(f))}</dd></div>
+      ${f.raw != null ? `<div><dt>Integer</dt><dd>${f.raw}${signedNote}</dd></div>` : ""}
+      ${f.scale != null && f.raw != null ? `<div><dt>Scale</dt><dd>× ${fmt(f.scale, 12)}${f.unit ? " " + esc(f.unit) : ""}</dd></div><div><dt>Value</dt><dd>${esc(valueText(f))}</dd></div>` : ""}
+      ${f.meaningText ? `<div style="grid-column: span 2"><dt>Meaning</dt><dd class="meaning">${esc(f.meaningText)}</dd></div>` : ""}
+      ${bitNote}
+    </dl>
+    <p class="insp-desc">${esc(f.desc)}</p>${via}`;
+}
+
+function setHighlight(k) {
+  document.querySelectorAll(".bit.hl").forEach((e) => e.classList.remove("hl"));
+  document.querySelectorAll("tr.f.hl").forEach((e) => e.classList.remove("hl"));
+  if (k == null) return;
+  const f = state.fields[k];
+  const bitsEl = $("#bits");
+  for (let b = f.start; b < f.start + f.len; b++) bitsEl.querySelector(`[data-b="${b}"]`)?.classList.add("hl");
+  $(`tr.f[data-f="${k}"]`)?.classList.add("hl");
+}
+
+const detailEl = $("#detail");
+detailEl.addEventListener("mouseover", (e) => {
+  const s = state;
+  const bit = e.target.closest(".bit"), row = e.target.closest("tr.f"), col = e.target.closest(".col");
+  if (bit) {
+    const b = +bit.dataset.b; const k = s.bitField[b];
+    document.querySelectorAll(".bit.cur").forEach((x) => x.classList.remove("cur"));
+    if (s.fields[k] && s.fields[k].bitLabel) bit.classList.add("cur");
+    if (k !== s.hover || s.hoverBit !== b) { s.hover = k; s.hoverBit = b; s.hoverCol = null; setHighlight(k); renderInspector(); }
+  } else if (row) {
+    const k = +row.dataset.f;
+    if (k !== s.hover) { s.hover = k; s.hoverBit = null; s.hoverCol = null; setHighlight(k); renderInspector(); }
+  } else if (col) {
+    const j = +col.dataset.col;
+    if (j !== s.hoverCol) { s.hoverCol = j; s.hover = null; setHighlight(null); renderInspector(); }
+  }
+});
+detailEl.addEventListener("mouseleave", () => { const s = state; s.hover = null; s.hoverBit = null; s.hoverCol = null; document.querySelectorAll(".bit.cur").forEach((x) => x.classList.remove("cur")); setHighlight(s.pinned); renderInspector(); });
+detailEl.addEventListener("mouseout", (e) => {
+  const s = state;
+  if (e.relatedTarget && (e.relatedTarget.closest?.(".bit, tr.f, .col, #inspector"))) return;
+  if (s.hover != null || s.hoverCol != null) { s.hover = null; s.hoverBit = null; s.hoverCol = null; document.querySelectorAll(".bit.cur").forEach((x) => x.classList.remove("cur")); setHighlight(s.pinned); renderInspector(); }
+});
+detailEl.addEventListener("click", (e) => {
+  const s = state;
+  const go = e.target.closest("[data-goto]");
+  if (go) { const i = +go.dataset.goto; if (!state.view.includes(i)) { s.types.clear(); s.prns.clear(); s.crcOnly = false; applyFilters(); renderFilters(); } select(i, true); return; }
+  const bit = e.target.closest(".bit"), row = e.target.closest("tr.f"), col = e.target.closest(".col");
+  if (col) {
+    document.querySelectorAll(".col.on").forEach((x) => x.classList.remove("on"));
+    col.classList.add("on"); s.hoverCol = +col.dataset.col; s.hover = null; renderInspector(); return;
+  }
+  const k = bit ? s.bitField[+bit.dataset.b] : row ? +row.dataset.f : null;
+  if (k == null || k < 0) return;
+  s.pinned = s.pinned === k ? null : k;
+  s.hover = null; s.hoverCol = null;
+  if (bit) s.hoverBit = +bit.dataset.b;
+  document.querySelectorAll("tr.f.pinned").forEach((x) => x.classList.remove("pinned"));
+  if (s.pinned != null) $(`tr.f[data-f="${s.pinned}"]`)?.classList.add("pinned");
+  setHighlight(s.pinned);
+  renderInspector();
+});
+detailEl.addEventListener("keydown", (e) => {
+  const row = e.target.closest("tr.f");
+  if (row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); row.click(); }
+});
+
+loadTexts([{ name: SAMPLE_NAME, text: SAMPLE }], true);
+</script>

@@ -1,0 +1,1253 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SBAS Message Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: instrument-panel workbench. Header + summary strip, then a message
+   list (left) beside the selected frame (right): raw line, bit map, inspector,
+   field table. Stacks to one column on phones. */
+:root {
+  --bg: #dfe4e7;
+  --panel: #f3f5f6;
+  --ink: #1a252b;
+  --ink-2: #44545d;
+  --ink-3: #6f7f88;
+  --line: #c6cfd4;
+  --accent: #0d6a86;
+  --accent-ink: #ffffff;
+  --accent-soft: #cfe3ea;
+  --ok: #1d7f47;
+  --bad: #b8322b;
+  --warn: #9a6512;
+  --t0: #d4e2f6; --t1: #f4d9c8; --t2: #cbe7dc; --t3: #f0e3bb; --t4: #ebd2de; --t5: #d8d3ee;
+  --th: #d9dfe2; --tc: #e2dcd2; --ts: #e9edef; --hatch: #d3dadd;
+  --hl: #0d6a86;
+  --font-ui: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", "IBM Plex Sans", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b2328; --panel: #232d33; --ink: #e2e9ed; --ink-2: #aab8c0; --ink-3: #7f8f98; --line: #36444c;
+    --accent: #52b9d6; --accent-ink: #062029; --accent-soft: #1d3e4a; --ok: #4cc27f; --bad: #f0746b; --warn: #e2ad55;
+    --t0: #263a54; --t1: #4b3123; --t2: #1f4236; --t3: #463b1e; --t4: #482a39; --t5: #322d57;
+    --th: #2e3a41; --tc: #3a352e; --ts: #283238; --hatch: #313e45; --hl: #52b9d6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b2328; --panel: #232d33; --ink: #e2e9ed; --ink-2: #aab8c0; --ink-3: #7f8f98; --line: #36444c;
+  --accent: #52b9d6; --accent-ink: #062029; --accent-soft: #1d3e4a; --ok: #4cc27f; --bad: #f0746b; --warn: #e2ad55;
+  --t0: #263a54; --t1: #4b3123; --t2: #1f4236; --t3: #463b1e; --t4: #482a39; --t5: #322d57;
+  --th: #2e3a41; --tc: #3a352e; --ts: #283238; --hatch: #313e45; --hl: #52b9d6;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: var(--font-ui); font-size: 14px; line-height: 1.45; padding: 0 16px 32px; }
+.wrap { max-width: 1440px; margin: 0 auto; display: grid; gap: 14px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+button, input { font: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; padding-block: 20px 4px; }
+.brand h1 { font-size: 26px; font-weight: 600; letter-spacing: 0.01em; }
+.brand p { margin: 2px 0 0; color: var(--ink-2); max-width: 64ch; }
+.load { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: var(--radius); padding: 7px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.theme { min-width: 92px; display: inline-flex; align-items: center; gap: 6px; }
+.btn.theme svg { width: 15px; height: 15px; flex: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 500; }
+.hint { color: var(--ink-3); font-size: 12px; }
+.drop-active::after { content: "Drop .ems files to open them"; position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--bg) 85%, transparent); display: grid; place-items: center; font: 600 20px var(--font-display); color: var(--accent); z-index: 50; }
+
+/* summary strip */
+.summary { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; }
+.stat { display: grid; }
+.stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.stat .v { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; }
+.stat .v.bad { color: var(--bad); }
+.stat .v.ok { color: var(--ok); }
+.sample-tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; background: var(--accent-soft); color: var(--accent); padding: 2px 7px; border-radius: 99px; }
+.notice { color: var(--warn); font-size: 13px; }
+
+/* filters */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.filters .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin-right: 4px; }
+.chip { border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); border-radius: 99px; padding: 2px 9px; font: 12px var(--font-data); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip .n { opacity: 0.7; margin-left: 4px; }
+
+/* main */
+.main { display: grid; grid-template-columns: minmax(300px, 0.85fr) minmax(0, 2fr); gap: 14px; align-items: start; }
+.pane { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+.list-pane { position: sticky; top: env(safe-area-inset-top, 0px); }
+.list-head, .row { display: grid; grid-template-columns: 78px 40px 48px minmax(0, 1fr) 18px; gap: 8px; align-items: center; padding: 0 10px; }
+.list-head { height: 32px; border-bottom: 1px solid var(--line); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.list { height: min(72vh, 760px); overflow-y: auto; position: relative; }
+.row { position: absolute; left: 0; right: 0; height: 32px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); font-size: 13px; }
+.row:hover { background: var(--accent-soft); }
+.row.sel { background: var(--accent); color: var(--accent-ink); }
+.row .t, .row .p { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; }
+.row .s { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.row.sel .s { color: inherit; }
+.mt { font: 600 11px var(--font-data); border-radius: 4px; padding: 1px 0; text-align: center; background: var(--th); color: var(--ink); }
+.row.sel .mt { background: color-mix(in srgb, var(--accent-ink) 22%, transparent); color: inherit; }
+.crc-ok { color: var(--ok); } .crc-bad { color: var(--bad); font-weight: 700; }
+.row.sel .crc-ok { color: inherit; }
+.empty { padding: 24px; color: var(--ink-3); }
+
+/* detail */
+.detail { display: grid; gap: 0; }
+.sec { padding: 14px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.sec:last-child { border-bottom: 0; }
+.sec h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.sec h2 .aside { text-transform: none; letter-spacing: 0; font-family: var(--font-ui); font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.msg-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.msg-title h3 { font-size: 22px; font-weight: 600; }
+.msg-title .meta { color: var(--ink-2); font-family: var(--font-data); font-size: 13px; }
+.badge { font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 99px; }
+.badge.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.badge.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+.badge.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+
+.rawline { overflow-x: auto; font-family: var(--font-data); font-size: 13px; white-space: pre; padding: 8px 10px; background: var(--ts); border-radius: 4px; }
+.col { border-radius: 3px; padding: 1px 2px; cursor: help; }
+.col:hover, .col.on { background: var(--accent-soft); color: var(--accent); }
+
+/* bit map */
+.bitwrap { overflow-x: auto; }
+.bits { display: grid; grid-template-columns: 34px repeat(32, minmax(16px, 1fr)); gap: 2px; min-width: 600px; font-family: var(--font-data); font-size: 12px; }
+.bits.narrow { grid-template-columns: 34px repeat(16, minmax(16px, 1fr)); min-width: 0; }
+.bits .off { color: var(--ink-3); font-size: 10px; text-align: right; padding-right: 4px; align-self: center; }
+.bit { height: 24px; display: grid; place-items: center; border-radius: 2px; cursor: pointer; user-select: none; color: var(--ink-2); position: relative; }
+.bit.one { color: var(--ink); font-weight: 600; }
+.bit.byte-start { margin-left: 3px; }
+.bit.k-t0 { background: var(--t0); } .bit.k-t1 { background: var(--t1); } .bit.k-t2 { background: var(--t2); }
+.bit.k-t3 { background: var(--t3); } .bit.k-t4 { background: var(--t4); } .bit.k-t5 { background: var(--t5); }
+.bit.k-h { background: var(--th); } .bit.k-c { background: var(--tc); }
+.bit.k-s { background: repeating-linear-gradient(135deg, var(--ts) 0 4px, var(--hatch) 4px 6px); color: var(--ink-3); }
+.bit.k-p { background: transparent; border: 1px dashed var(--line); color: var(--ink-3); }
+.bit.mask-on { box-shadow: inset 0 -3px 0 var(--accent); }
+.bit.hl { outline: 2px solid var(--hl); outline-offset: -1px; z-index: 1; }
+.bit.cur { background: var(--accent) !important; color: var(--accent-ink); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 5px; }
+
+/* inspector */
+.inspector { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--panel); }
+.insp-empty { color: var(--ink-3); }
+.insp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 6px; }
+.insp-head strong { font: 600 18px var(--font-display); }
+.insp-head span { color: var(--ink-2); font-size: 13px; }
+.insp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 18px; margin: 0 0 8px; }
+.insp-grid div { min-width: 0; }
+.insp-grid dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.insp-grid dd { margin: 0; font-family: var(--font-data); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.insp-grid dd.meaning { font-family: var(--font-ui); font-weight: 500; }
+.insp-desc { margin: 0; color: var(--ink-2); max-width: 75ch; }
+.via { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
+.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; font: inherit; }
+.pin-note { font-size: 11px; color: var(--ink-3); margin-left: auto; }
+
+/* table */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 4px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); vertical-align: top; }
+td.num, td.bin { font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.bin { color: var(--ink-2); font-size: 12px; }
+tr.grp td { background: var(--ts); font-weight: 600; font-size: 12px; color: var(--ink-2); padding-top: 6px; }
+tr.f { cursor: pointer; }
+tr.f td:first-child { border-left: 4px solid transparent; }
+tr.f.k-t0 td:first-child { border-left-color: var(--t0); } tr.f.k-t1 td:first-child { border-left-color: var(--t1); }
+tr.f.k-t2 td:first-child { border-left-color: var(--t2); } tr.f.k-t3 td:first-child { border-left-color: var(--t3); }
+tr.f.k-t4 td:first-child { border-left-color: var(--t4); } tr.f.k-t5 td:first-child { border-left-color: var(--t5); }
+tr.f.k-h td:first-child { border-left-color: var(--th); } tr.f.k-c td:first-child { border-left-color: var(--tc); }
+tr.f.k-s td:first-child, tr.f.k-p td:first-child { border-left-color: var(--hatch); }
+tr.f.k-s, tr.f.k-p { color: var(--ink-3); }
+tr.f:hover td, tr.f.hl td { background: var(--accent-soft); }
+tr.f.pinned td { background: var(--accent-soft); box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent); }
+.toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-2); text-transform: none; letter-spacing: 0; font-family: var(--font-ui); font-weight: 400; }
+.errors { font-size: 12px; color: var(--ink-2); }
+.errors summary { cursor: pointer; color: var(--warn); }
+.errors pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-data); }
+footer { color: var(--ink-3); font-size: 12px; max-width: 90ch; }
+footer a { color: var(--accent); }
+
+@media (max-width: 900px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .list-pane { position: static; }
+  .list { height: 300px; }
+  .inspector { position: static; }
+}
+@media (max-width: 520px) {
+  .list-head, .row { grid-template-columns: 64px 34px 40px minmax(0, 1fr) 16px; gap: 6px; padding: 0 8px; }
+  .brand h1 { font-size: 22px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style></head><body>
+
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand">
+      <h1>SBAS Message Explorer</h1>
+      <p>Open an EMS or GNSS-SDR <span class="mono">.ems</span> file and inspect every SBAS L1 frame bit by bit, decoded per RTCA DO-229 Appendix A. Files are read in your browser and never uploaded.</p>
+    </div>
+    <div class="load">
+      <input type="file" id="file" accept=".ems,.EMS,.sbs,.txt,text/plain" multiple hidden>
+      <button class="btn primary" id="open">Open .ems files</button>
+      <button class="btn" id="sample">Load sample</button>
+      <span class="hint">or drop files anywhere, or paste lines</span>
+      <button class="btn theme" id="theme" type="button" title="Color theme: follows your system setting">Auto</button>
+    </div>
+  </header>
+
+  <section class="summary" id="summary" aria-live="polite"></section>
+  <div class="filters" id="filters"></div>
+
+  <div class="main">
+    <section class="pane list-pane" aria-label="Messages">
+      <div class="list-head"><span>Time</span><span>PRN</span><span>Type</span><span>Content</span><span title="CRC">✓</span></div>
+      <div class="list" id="list" tabindex="0" aria-label="Message list. Use arrow keys to move."></div>
+    </section>
+    <section class="pane detail" id="detail" aria-label="Selected message"></section>
+  </div>
+
+  <footer>
+    Layouts follow RTCA DO-229 Appendix A; IGP band geometry follows RTKLIB. Message slots and grid points are resolved through the PRN mask (MT1) and IGP mask (MT18) found anywhere in the loaded file with the matching issue of data, so a message received before its mask is still explained. Line format explanations are inspired by the <a href="https://gage.upc.edu" target="_blank" rel="noopener">gAGE</a> file format explorers.
+    <br><a href="https://minhaj6.github.io/tools/">← More tools</a> · Minhaj Uddin Ahmad
+  </footer>
+</div>
+
+<script>
+/* SBAS L1 message decoder: field layouts per RTCA DO-229 Appendix A.
+   Pure functions, no DOM. Every message type is described as a list of
+   fields (start bit, width, sign, scale, unit, explanation), so the same
+   description drives decoding, the bit map and the field table. */
+
+const MT_NAMES = {
+  0: "Do not use (test mode)",
+  1: "PRN mask",
+  2: "Fast corrections, slots 1–13",
+  3: "Fast corrections, slots 14–26",
+  4: "Fast corrections, slots 27–39",
+  5: "Fast corrections, slots 40–51",
+  6: "Integrity information",
+  7: "Fast correction degradation",
+  9: "GEO navigation message",
+  10: "Degradation parameters",
+  12: "SBAS network time / UTC",
+  17: "GEO almanacs",
+  18: "Ionospheric grid point mask",
+  24: "Mixed fast / long-term corrections",
+  25: "Long-term satellite corrections",
+  26: "Ionospheric delay corrections",
+  27: "SBAS service message",
+  28: "Clock-ephemeris covariance",
+  62: "Internal test message",
+  63: "Null message",
+};
+
+const UDRE_M = [0.75, 1.0, 1.25, 1.75, 2.25, 3.0, 3.75, 4.5, 5.25, 6.0, 7.5, 15.0, 50.0, 150.0];
+const UDRE_VAR = [0.052, 0.0924, 0.1444, 0.283, 0.4678, 0.8315, 1.2992, 1.8709, 2.5465, 3.326, 5.1968, 20.787, 230.9661, 2078.695];
+const GIVE_M = [0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4, 2.7, 3.0, 3.6, 4.5, 6.0, 15.0, 45.0];
+const GIVE_VAR = [0.0084, 0.0333, 0.0749, 0.1331, 0.2079, 0.2994, 0.4075, 0.5322, 0.6735, 0.8315, 1.1974, 1.8709, 3.326, 20.787, 187.0826];
+const AI_FACTOR = [0, 0.00005, 0.00009, 0.00012, 0.00015, 0.0002, 0.0003, 0.00045, 0.0006, 0.0009, 0.0015, 0.0021, 0.0027, 0.0033, 0.0046, 0.0058];
+const PREAMBLES = [0x53, 0x9a, 0xc6];
+
+/* ---------- bits ---------- */
+
+function hexToBits(hex) {
+  const bits = new Uint8Array(hex.length * 4);
+  for (let i = 0; i < hex.length; i++) {
+    const v = parseInt(hex[i], 16);
+    for (let b = 0; b < 4; b++) bits[i * 4 + b] = (v >> (3 - b)) & 1;
+  }
+  return bits;
+}
+function getU(bits, start, len) {
+  let v = 0;
+  for (let i = 0; i < len; i++) v = v * 2 + bits[start + i];
+  return v;
+}
+function getS(bits, start, len) {
+  const v = getU(bits, start, len);
+  return bits[start] ? v - Math.pow(2, len) : v;
+}
+function bitString(bits, start, len) {
+  let s = "";
+  for (let i = 0; i < len; i++) s += bits[start + i];
+  return s;
+}
+/* CRC-24Q over bits 0..225 (preamble, type, data); compared with bits 226..249. */
+function crc24q(bits) {
+  let crc = 0;
+  for (let i = 0; i < 226; i++) {
+    const msb = (crc >>> 23) & 1;
+    crc = (crc << 1) & 0xffffff;
+    if (msb ^ bits[i]) crc ^= 0x864cfb;
+  }
+  return crc;
+}
+
+/* ---------- labels ---------- */
+
+function prnCodeName(code) {
+  if (code >= 1 && code <= 37) return "G" + String(code).padStart(2, "0");
+  if (code >= 38 && code <= 61) return "R" + String(code - 37).padStart(2, "0");
+  if (code >= 120 && code <= 158) return "S" + code;
+  return "code " + code;
+}
+function prnCodeSystem(code) {
+  if (code >= 1 && code <= 37) return "GPS PRN " + code;
+  if (code >= 38 && code <= 61) return "GLONASS slot " + (code - 37);
+  if (code >= 62 && code <= 119) return "reserved for future GNSS";
+  if (code >= 120 && code <= 158) return "SBAS PRN " + code;
+  return "reserved";
+}
+function fmt(v, digits) {
+  if (!isFinite(v)) return String(v);
+  if (v !== 0 && (Math.abs(v) < 1e-3 || Math.abs(v) >= 1e7)) return v.toExponential(3);
+  return Number(v.toFixed(digits == null ? 4 : digits)).toString();
+}
+function udreText(i) {
+  if (i === 14) return "Not monitored";
+  if (i === 15) return "Do not use";
+  return `UDRE ${UDRE_M[i]} m (σ ${Math.sqrt(UDRE_VAR[i]).toFixed(3)} m)`;
+}
+function giveText(i) {
+  if (i === 15) return "Not monitored";
+  return `GIVE ${GIVE_M[i]} m (σ ${Math.sqrt(GIVE_VAR[i]).toFixed(3)} m)`;
+}
+
+/* ---------- IGP geometry (bands 0–10), as in RTKLIB rtklib_sbas.h ---------- */
+
+const X1 = [-75, -65, -55, -50, -45, -40, -35, -30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 65, 75, 85];
+const X2 = [-55, -50, -45, -40, -35, -30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+const X3 = [-75, -65, -55, -50, -45, -40, -35, -30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 65, 75];
+const X4 = [-85, -75, -65, -55, -50, -45, -40, -35, -30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 65, 75];
+const range = (a, b, s) => { const r = []; for (let v = a; v < b; v += s) r.push(v); return r; };
+const X5 = range(-180, 180, 5), X6 = range(-180, 180, 10), X7 = range(-180, 180, 30), X8 = range(-170, 180, 30);
+const BAND_V = [
+  [[-180, X1, 1, 28], [-175, X2, 29, 51], [-170, X3, 52, 78], [-165, X2, 79, 101], [-160, X3, 102, 128], [-155, X2, 129, 151], [-150, X3, 152, 178], [-145, X2, 179, 201]],
+  [[-140, X4, 1, 28], [-135, X2, 29, 51], [-130, X3, 52, 78], [-125, X2, 79, 101], [-120, X3, 102, 128], [-115, X2, 129, 151], [-110, X3, 152, 178], [-105, X2, 179, 201]],
+  [[-100, X3, 1, 27], [-95, X2, 28, 50], [-90, X1, 51, 78], [-85, X2, 79, 101], [-80, X3, 102, 128], [-75, X2, 129, 151], [-70, X3, 152, 178], [-65, X2, 179, 201]],
+  [[-60, X3, 1, 27], [-55, X2, 28, 50], [-50, X4, 51, 78], [-45, X2, 79, 101], [-40, X3, 102, 128], [-35, X2, 129, 151], [-30, X3, 152, 178], [-25, X2, 179, 201]],
+  [[-20, X3, 1, 27], [-15, X2, 28, 50], [-10, X3, 51, 77], [-5, X2, 78, 100], [0, X1, 101, 128], [5, X2, 129, 151], [10, X3, 152, 178], [15, X2, 179, 201]],
+  [[20, X3, 1, 27], [25, X2, 28, 50], [30, X3, 51, 77], [35, X2, 78, 100], [40, X4, 101, 128], [45, X2, 129, 151], [50, X3, 152, 178], [55, X2, 179, 201]],
+  [[60, X3, 1, 27], [65, X2, 28, 50], [70, X3, 51, 77], [75, X2, 78, 100], [80, X3, 101, 127], [85, X2, 128, 150], [90, X1, 151, 178], [95, X2, 179, 201]],
+  [[100, X3, 1, 27], [105, X2, 28, 50], [110, X3, 51, 77], [115, X2, 78, 100], [120, X3, 101, 127], [125, X2, 128, 150], [130, X4, 151, 178], [135, X2, 179, 201]],
+  [[140, X3, 1, 27], [145, X2, 28, 50], [150, X3, 51, 77], [155, X2, 78, 100], [160, X3, 101, 127], [165, X2, 128, 150], [170, X3, 151, 177], [175, X2, 178, 200]],
+];
+const BAND_H = [
+  [[60, X5, 1, 72], [65, X6, 73, 108], [70, X6, 109, 144], [75, X6, 145, 180], [85, X7, 181, 192]],
+  [[-60, X5, 1, 72], [-65, X6, 73, 108], [-70, X6, 109, 144], [-75, X6, 145, 180], [-85, X8, 181, 192]],
+];
+function igpCoords(band, bit) {
+  if (band >= 0 && band <= 8) {
+    for (const [lon, lats, a, b] of BAND_V[band]) if (bit >= a && bit <= b) return [lats[bit - a], lon];
+  } else if (band === 9 || band === 10) {
+    for (const [lat, lons, a, b] of BAND_H[band - 9]) if (bit >= a && bit <= b) return [lat, lons[bit - a]];
+  }
+  return null;
+}
+function latLonText(c) {
+  if (!c) return "outside band definition";
+  const [lat, lon] = c;
+  return `${Math.abs(lat)}°${lat >= 0 ? "N" : "S"} ${Math.abs(lon)}°${lon >= 0 ? "E" : "W"}`;
+}
+
+/* ---------- file parsing ---------- */
+
+/* Accepts three line formats:
+   GNSS-SDR / RTKLIB : <week> <tow_s> <prn> [<type>] : <hex>
+   ESA EMS           : <prn> <yy> <mm> <dd> <hh> <mm> <ss> <type> <hex>
+   Lines starting with ';' or '#' are comments. */
+function parseFile(text) {
+  const msgs = [], errors = [], comments = [];
+  const lines = text.split(/\r?\n/);
+  let format = null;
+  for (let n = 0; n < lines.length; n++) {
+    const raw = lines[n];
+    const line = raw.trim();
+    if (!line) continue;
+    if (line[0] === ";" || line[0] === "#") { comments.push(line); continue; }
+    let m, msg = null;
+    if ((m = line.match(/^(\d+)\s+([-+]?\d+(?:\.\d*)?)\s+(\d+)(?:\s+(\d+))?\s*:\s*([0-9A-Fa-f]+)\s*$/))) {
+      msg = { format: "gnss-sdr", week: +m[1], tow: +m[2], prn: +m[3], typeCol: m[4] == null ? null : +m[4], hex: m[5].toUpperCase() };
+      msg.cols = [["week", m[1]], ["tow", m[2]], ["prn", m[3]]];
+      if (m[4] != null) msg.cols.push(["type", m[4]]);
+      msg.cols.push(["sep", ":"], ["hex", m[5]]);
+    } else if ((m = line.match(/^(\d+)\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}(?:\.\d*)?)\s+(\d+)\s+([0-9A-Fa-f]+)\s*$/))) {
+      const yy = +m[2];
+      const year = yy < 70 ? 2000 + yy : 1900 + yy;
+      const sec = +m[7];
+      const date = new Date(Date.UTC(year, +m[3] - 1, +m[4], +m[5], +m[6], Math.floor(sec)));
+      msg = { format: "ems", prn: +m[1], date, tow: date.getTime() / 1000, typeCol: +m[8], hex: m[9].toUpperCase() };
+      msg.cols = [["prn", m[1]], ["yy", m[2]], ["mon", m[3]], ["day", m[4]], ["hh", m[5]], ["min", m[6]], ["ss", m[7]], ["type", m[8]], ["hex", m[9]]];
+    }
+    if (!msg) { errors.push({ line: n + 1, text: line, why: "unrecognised line format" }); continue; }
+    if (msg.hex.length < 63) { errors.push({ line: n + 1, text: line, why: `only ${msg.hex.length} hex digits; a frame needs at least 63 (250 bits)` }); continue; }
+    format = format || msg.format;
+    msg.line = n + 1;
+    msg.rawLine = raw;
+    msg.bits = hexToBits(msg.hex);
+    msg.nbits = msg.bits.length;
+    msg.preamble = getU(msg.bits, 0, 8);
+    msg.mt = getU(msg.bits, 8, 6);
+    msg.crcCalc = crc24q(msg.bits);
+    msg.crcRx = getU(msg.bits, 226, 24);
+    msg.crcOk = msg.crcCalc === msg.crcRx;
+    msg.index = msgs.length;
+    msgs.push(msg);
+  }
+  return { msgs, errors, comments, format };
+}
+
+/* ---------- masks known from the whole file ---------- */
+
+class History {
+  constructor() { this.byKey = new Map(); this.all = []; }
+  add(key, t, value) {
+    if (!this.byKey.has(key)) this.byKey.set(key, []);
+    const entry = { t, value };
+    this.byKey.get(key).push(entry);
+    this.all.push(entry);
+  }
+  pick(list, t) {
+    if (!list || !list.length) return null;
+    let cur = list[0];
+    for (const e of list) { if (e.t > t) break; cur = e; }
+    return cur;
+  }
+  get(key, t) { return this.pick(this.byKey.get(key), t); }
+  latest(t) { return this.pick(this.all, t); }
+}
+
+function buildContext(msgs) {
+  const ctx = { prn: new Map(), igp: new Map() };
+  const per = (map, prn) => { if (!map.has(prn)) map.set(prn, new History()); return map.get(prn); };
+  for (const m of msgs) {
+    if (!m.crcOk) continue;
+    if (m.mt === 1) {
+      const codes = [];
+      for (let i = 0; i < 210; i++) if (m.bits[14 + i]) codes.push(i + 1);
+      per(ctx.prn, m.prn).add(getU(m.bits, 224, 2), m.tow, { codes, msg: m });
+    } else if (m.mt === 18) {
+      const band = getU(m.bits, 18, 4), iodi = getU(m.bits, 22, 2);
+      const igps = [];
+      for (let i = 0; i < 201; i++) if (m.bits[24 + i]) igps.push({ bit: i + 1, coords: igpCoords(band, i + 1) });
+      per(ctx.igp, m.prn).add(band + "/" + iodi, m.tow, { band, igps, msg: m });
+    }
+  }
+  for (const h of ctx.prn.values()) h.all.sort((a, b) => a.t - b.t);
+  for (const h of ctx.igp.values()) h.all.sort((a, b) => a.t - b.t);
+  return ctx;
+}
+
+/* Resolve a 1-based mask slot to a satellite. Returns {name, code, via} or null. */
+function resolveSlot(ctx, msg, slot, iodp) {
+  const h = ctx.prn.get(msg.prn);
+  if (!h) return null;
+  const e = iodp == null ? h.latest(msg.tow) : h.get(iodp, msg.tow);
+  if (!e) return { missing: iodp == null ? "no MT1 in file" : `no MT1 with IODP ${iodp} in file` };
+  const codes = e.value.codes;
+  if (slot < 1 || slot > codes.length) return { beyond: true, size: codes.length, via: e.value.msg };
+  const code = codes[slot - 1];
+  return { name: prnCodeName(code), code, via: e.value.msg };
+}
+function resolveIgp(ctx, msg, band, iodi, index) {
+  const h = ctx.igp.get(msg.prn);
+  const e = h && h.get(band + "/" + iodi, msg.tow);
+  if (!e) return { missing: `no MT18 for band ${band}, IODI ${iodi} in file` };
+  const igps = e.value.igps;
+  if (index >= igps.length) return { beyond: true, size: igps.length, via: e.value.msg };
+  return { ...igps[index], via: e.value.msg };
+}
+
+/* ---------- field layouts ---------- */
+
+const D = 14; // first data bit
+
+function F(key, name, start, len, o = {}) {
+  return { key, name, start, len, signed: !!o.signed, scale: o.scale, unit: o.unit || "", desc: o.desc || "", meaning: o.meaning, group: o.group, kind: o.kind || "data", bitLabel: o.bitLabel };
+}
+const spare = (key, start, len, group) =>
+  F(key, "Spare", start, len, { kind: "spare", group, desc: "Reserved bits, broadcast as zeros.", meaning: (r) => (r === 0 ? "All zero, as expected" : "Non-zero: unexpected for spare bits") });
+
+const DESC = {
+  iodp: "Issue of data, PRN mask. Ties this message to the MT1 mask with the same IODP, which says which satellite each slot refers to.",
+  iodf: "Issue of data, fast corrections. Increments when the corrections change; IODF 3 in MT2–5 signals an alarm condition.",
+  prc: "Fast pseudorange correction for this slot, added to the measured pseudorange. 12-bit two's complement, 0.125 m per count (range ±256 m).",
+  udrei: "User Differential Range Error indicator. Bounds the residual range error after corrections at 99.9 %. Index 14 = not monitored, 15 = do not use.",
+};
+
+function slotMeaning(fieldSlot, iodpKey) {
+  return (raw, v, all, ctx, msg) => {
+    const iodp = iodpKey ? all[iodpKey] : null;
+    const r = resolveSlot(ctx, msg, fieldSlot(raw, all), iodp);
+    return r;
+  };
+}
+
+/* Fast corrections: ``count`` PRCs then ``count`` UDREIs. For MT2-5 ``base``
+   is the first slot; for MT24 (base null) the slot depends on the block ID
+   and is worked out in decodeMessage. */
+function fastFields(base, prcStart, udreStart, count, iodpKey) {
+  const out = [];
+  const group = (i) => (base == null ? `Entry ${i + 1}` : `Slot ${base + i}`);
+  const slot = (i) => (base == null ? i : base + i);
+  for (let i = 0; i < count; i++) {
+    const f = F(`prc${i}`, "PRC", prcStart + 12 * i, 12, { signed: true, scale: 0.125, unit: "m", group: group(i), desc: DESC.prc,
+      meaning: (r, v) => `${v >= 0 ? "+" : ""}${fmt(v, 3)} m correction` });
+    f.slot = slot(i); f.iodpKey = iodpKey;
+    out.push(f);
+  }
+  for (let i = 0; i < count; i++) {
+    const f = F(`udrei${i}`, "UDREI", udreStart + 4 * i, 4, { group: group(i), desc: DESC.udrei, meaning: (r) => udreText(r) });
+    f.slot = slot(i); f.iodpKey = iodpKey;
+    out.push(f);
+  }
+  return out;
+}
+
+function ltcHalf(bits, s, prefix, groupPrefix) {
+  const vc = bits[s];
+  const out = [F(prefix + "vc", "Velocity code", s, 1, { group: groupPrefix, desc: "0: two satellites, position and clock offsets only. 1: one satellite, with velocity and clock drift terms.", meaning: (r) => (r ? "1 satellite with velocity terms" : "2 satellites, offsets only") })];
+  const iodpKey = prefix + "iodp";
+  if (vc === 0) {
+    let p = s + 1;
+    for (let k = 0; k < 2; k++) {
+      const g = `${groupPrefix} · satellite ${k + 1}`;
+      out.push(F(`${prefix}slot${k}`, "PRN mask slot", p, 6, { group: g, kind: "slot", iodpKey, desc: "Position of the satellite in the MT1 PRN mask (1-based). Slot 0 means this entry is unused." })); p += 6;
+      out.push(F(`${prefix}iod${k}`, "IOD", p, 8, { group: g, desc: "Issue of data of the broadcast ephemeris (GPS IODE) these corrections apply to." })); p += 8;
+      for (const ax of ["x", "y", "z"]) { out.push(F(`${prefix}d${ax}${k}`, `δ${ax}`, p, 9, { signed: true, scale: 0.125, unit: "m", group: g, desc: `ECEF ${ax.toUpperCase()} correction to the broadcast satellite position.` })); p += 9; }
+      out.push(F(`${prefix}daf0${k}`, "δaf0", p, 10, { signed: true, scale: Math.pow(2, -31), unit: "s", group: g, desc: "Correction to the satellite clock offset.", meaning: (r, v) => `${fmt(v * 299792458, 3)} m in range` })); p += 10;
+    }
+    out.push(F(iodpKey, "IODP", p, 2, { group: `${groupPrefix} · issue of data`, desc: DESC.iodp })); p += 2;
+    out.push(spare(prefix + "spare", p, 1, `${groupPrefix} · issue of data`));
+  } else {
+    let p = s + 1;
+    const g = `${groupPrefix} · satellite`;
+    out.push(F(`${prefix}slot0`, "PRN mask slot", p, 6, { group: g, kind: "slot", iodpKey, desc: "Position of the satellite in the MT1 PRN mask (1-based)." })); p += 6;
+    out.push(F(`${prefix}iod0`, "IOD", p, 8, { group: g, desc: "Issue of data of the broadcast ephemeris these corrections apply to." })); p += 8;
+    for (const ax of ["x", "y", "z"]) { out.push(F(`${prefix}d${ax}0`, `δ${ax}`, p, 11, { signed: true, scale: 0.125, unit: "m", group: g, desc: `ECEF ${ax.toUpperCase()} position correction at time t0.` })); p += 11; }
+    out.push(F(`${prefix}daf00`, "δaf0", p, 11, { signed: true, scale: Math.pow(2, -31), unit: "s", group: g, desc: "Satellite clock offset correction.", meaning: (r, v) => `${fmt(v * 299792458, 3)} m in range` })); p += 11;
+    const dots = { x: "ẋ", y: "ẏ", z: "ż" };
+    for (const ax of ["x", "y", "z"]) { out.push(F(`${prefix}dv${ax}0`, `δ${dots[ax]}`, p, 8, { signed: true, scale: Math.pow(2, -11), unit: "m/s", group: g, desc: `Rate of change of the ECEF ${ax.toUpperCase()} correction.` })); p += 8; }
+    out.push(F(`${prefix}daf10`, "δaf1", p, 8, { signed: true, scale: Math.pow(2, -39), unit: "s/s", group: g, desc: "Satellite clock drift correction." })); p += 8;
+    out.push(F(`${prefix}t0`, "t0", p, 13, { scale: 16, unit: "s", group: g, desc: "Time of applicability, seconds of the day.", meaning: (r, v) => secondsOfDay(v) })); p += 13;
+    out.push(F(iodpKey, "IODP", p, 2, { group: `${groupPrefix} · issue of data`, desc: DESC.iodp }));
+  }
+  return out;
+}
+
+function secondsOfDay(v) {
+  const h = Math.floor(v / 3600), m = Math.floor((v % 3600) / 60), s = Math.round(v % 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} of the day`;
+}
+
+function dataFields(msg) {
+  const b = msg.bits, mt = msg.mt;
+  const out = [];
+  switch (mt) {
+    case 1:
+      out.push(F("mask", "PRN mask", D, 210, { kind: "mask", group: "PRN mask", desc: "One bit per PRN code: bit n set means satellite code n is corrected. Slot numbers in later messages count the set bits in order.",
+        bitLabel: (i) => `bit ${i + 1}: ${prnCodeSystem(i + 1)}`,
+        meaning: () => { const c = []; for (let i = 0; i < 210; i++) if (b[D + i]) c.push(prnCodeName(i + 1)); return `${c.length} satellites: ${c.join(" ")}`; } }));
+      out.push(F("iodp", "IODP", 224, 2, { group: "PRN mask", desc: "Issue of data for this mask. Corrections that quote the same IODP use this mask." }));
+      break;
+    case 2: case 3: case 4: case 5: {
+      const base = { 2: 1, 3: 14, 4: 27, 5: 40 }[mt];
+      out.push(F("iodf", "IODF", D, 2, { group: "Header", desc: DESC.iodf, meaning: (r) => (r === 3 ? "3: alarm condition" : `Fast correction set ${r}`) }));
+      out.push(F("iodp", "IODP", D + 2, 2, { group: "Header", desc: DESC.iodp }));
+      out.push(...fastFields(base, 18, 174, 13, "iodp"));
+      break;
+    }
+    case 0:
+      out.push(F("payload", "Payload", D, 212, { kind: "spare", group: "Payload", desc: "MT0 tells receivers the GEO is in test mode and must not be used for safety-of-life navigation. WAAS fills the body with MT2 content; it is not interpreted here.", meaning: () => "Not interpreted" }));
+      break;
+    case 6:
+      for (let i = 0; i < 4; i++) out.push(F(`iodf${i}`, `IODF${i + 2}`, D + 2 * i, 2, { group: "Header", desc: `Issue of data of the MT${i + 2} fast corrections these UDREIs apply to.` }));
+      for (let i = 0; i < 51; i++) out.push(F(`udrei${i}`, "UDREI", 22 + 4 * i, 4, { group: `Slot ${i + 1}`, desc: DESC.udrei, meaning: (r) => udreText(r) }));
+      out.forEach((f) => { if (f.key.startsWith("udrei")) f.slot = +f.group.split(" ")[1]; });
+      break;
+    case 7:
+      out.push(F("latency", "System latency", D, 4, { unit: "s", scale: 1, group: "Header", desc: "Time from the start of the measurement to the arrival of the first bit of the correction at the user." }));
+      out.push(F("iodp", "IODP", 18, 2, { group: "Header", desc: DESC.iodp }));
+      out.push(spare("spare", 20, 2, "Header"));
+      for (let i = 0; i < 51; i++) out.push(F(`ai${i}`, "aᵢ indicator", 22 + 4 * i, 4, { group: `Slot ${i + 1}`, desc: "Fast correction degradation factor indicator: how quickly confidence in the last fast correction decays with age.", meaning: (r) => `a = ${AI_FACTOR[r]} m/s²` }));
+      out.forEach((f) => { if (f.key.startsWith("ai")) { f.slot = +f.group.split(" ")[1]; f.iodpKey = "iodp"; } });
+      break;
+    case 9: {
+      const g = "GEO ephemeris";
+      out.push(F("iodn", "IODN / spare", D, 8, { group: g, desc: "Issue of data, navigation (spare in older DO-229 revisions)." }));
+      out.push(F("t0", "t0", 22, 13, { scale: 16, unit: "s", group: g, desc: "Reference time of the GEO ephemeris, seconds of the day.", meaning: (r, v) => secondsOfDay(v) }));
+      out.push(F("ura", "URA index", 35, 4, { group: g, desc: "Accuracy of the GEO ranging signal, same scale as the GPS URA index. 15 means do not use for ranging.", meaning: (r) => (r === 15 ? "Do not use for ranging" : `URA index ${r}`) }));
+      out.push(F("x", "X", 39, 30, { signed: true, scale: 0.08, unit: "m", group: g, desc: "GEO position, ECEF X.",
+        meaning: (r, v, all) => `Sub-satellite longitude ${fmt((Math.atan2(all.y * 0.08, v) * 180) / Math.PI, 2)}°` }));
+      out.push(F("y", "Y", 69, 30, { signed: true, scale: 0.08, unit: "m", group: g, desc: "GEO position, ECEF Y." }));
+      out.push(F("z", "Z", 99, 25, { signed: true, scale: 0.4, unit: "m", group: g, desc: "GEO position, ECEF Z." }));
+      out.push(F("vx", "Ẋ", 124, 17, { signed: true, scale: 0.000625, unit: "m/s", group: g, desc: "GEO velocity, ECEF X." }));
+      out.push(F("vy", "Ẏ", 141, 17, { signed: true, scale: 0.000625, unit: "m/s", group: g, desc: "GEO velocity, ECEF Y." }));
+      out.push(F("vz", "Ż", 158, 18, { signed: true, scale: 0.004, unit: "m/s", group: g, desc: "GEO velocity, ECEF Z." }));
+      out.push(F("ax", "Ẍ", 176, 10, { signed: true, scale: 0.0000125, unit: "m/s²", group: g, desc: "GEO acceleration, ECEF X." }));
+      out.push(F("ay", "Ÿ", 186, 10, { signed: true, scale: 0.0000125, unit: "m/s²", group: g, desc: "GEO acceleration, ECEF Y." }));
+      out.push(F("az", "Z̈", 196, 10, { signed: true, scale: 0.0000625, unit: "m/s²", group: g, desc: "GEO acceleration, ECEF Z." }));
+      out.push(F("agf0", "aGf0", 206, 12, { signed: true, scale: Math.pow(2, -31), unit: "s", group: "GEO clock", desc: "GEO clock offset relative to SBAS network time.", meaning: (r, v) => `${fmt(v * 299792458, 2)} m in range` }));
+      out.push(F("agf1", "aGf1", 218, 8, { signed: true, scale: Math.pow(2, -40), unit: "s/s", group: "GEO clock", desc: "GEO clock drift." }));
+      break;
+    }
+    case 10: {
+      const g = "Degradation parameters";
+      const spec = [
+        ["brrc", "Brrc", 10, 0.002, "m", "Bound on noise and round-off error in the range-rate correction."],
+        ["cltclsb", "Cltc_lsb", 10, 0.002, "m", "Maximum round-off error of the long-term correction."],
+        ["cltcv1", "Cltc_v1", 10, 0.00005, "m/s", "Velocity error bound, long-term corrections with velocity code 1."],
+        ["iltcv1", "Iltc_v1", 9, 1, "s", "Update interval, long-term corrections with velocity code 1."],
+        ["cltcv0", "Cltc_v0", 10, 0.002, "m", "Error bound between successive long-term corrections, velocity code 0."],
+        ["iltcv0", "Iltc_v0", 9, 1, "s", "Minimum update interval, long-term corrections with velocity code 0."],
+        ["cgeolsb", "Cgeo_lsb", 10, 0.0005, "m", "Maximum round-off error of the GEO navigation message."],
+        ["cgeov", "Cgeo_v", 10, 0.00005, "m/s", "Velocity error bound of the GEO navigation message."],
+        ["igeo", "Igeo", 9, 1, "s", "Update interval of the GEO navigation message."],
+        ["cer", "Cer", 6, 0.5, "m", "Degradation bound applied when en-route fast or long-term corrections are missing."],
+        ["cionostep", "Ciono_step", 10, 0.001, "m", "Bound on the change between successive ionospheric grid delays."],
+        ["iiono", "Iiono", 9, 1, "s", "Minimum update interval of ionospheric corrections."],
+        ["cionoramp", "Ciono_ramp", 10, 0.000005, "m/s", "Rate of change of the ionospheric corrections."],
+        ["rssudre", "RSS_UDRE", 1, 1, "", "0: degradation terms add linearly to UDRE. 1: root-sum-square."],
+        ["rssiono", "RSS_iono", 1, 1, "", "0: degradation terms add linearly to GIVE. 1: root-sum-square."],
+        ["ccov", "Ccovariance", 7, 0.1, "", "Bound on round-off error in the MT28 covariance."],
+      ];
+      let p = D;
+      for (const [key, name, len, scale, unit, desc] of spec) { out.push(F(key, name, p, len, { scale, unit, group: g, desc })); p += len; }
+      out.push(spare("spare", p, 226 - p, g));
+      break;
+    }
+    case 12: {
+      const g = "Time parameters";
+      const spec = [
+        ["a1", "A1snt", 24, true, Math.pow(2, -50), "s/s", "Drift of SBAS network time relative to UTC."],
+        ["a0", "A0snt", 32, true, Math.pow(2, -30), "s", "Offset of SBAS network time relative to UTC."],
+        ["t0t", "t0t", 8, false, 4096, "s", "Reference time of the UTC parameters."],
+        ["wnt", "WNt", 8, false, 1, "", "UTC reference week number (8 LSBs)."],
+        ["dtls", "ΔtLS", 8, true, 1, "s", "Current leap-second count."],
+        ["wnlsf", "WNLSF", 8, false, 1, "", "Week of the next leap-second event."],
+        ["dn", "DN", 8, false, 1, "", "Day of the week of the next leap-second event."],
+        ["dtlsf", "ΔtLSF", 8, true, 1, "s", "Leap-second count after the event."],
+        ["utcid", "UTC standard ID", 3, false, 1, "", "Which UTC realisation the parameters refer to (NIST, USNO, …)."],
+        ["gpstow", "GPS TOW", 20, false, 1, "s", "GPS time of week."],
+        ["gpswn", "GPS week", 10, false, 1, "", "GPS week number (10 bits)."],
+        ["gloind", "GLONASS indicator", 1, false, 1, "", "1 if GLONASS time parameters are provided."],
+      ];
+      let p = D;
+      for (const [key, name, len, signed, scale, unit, desc] of spec) { out.push(F(key, name, p, len, { signed, scale, unit, group: g, desc })); p += len; }
+      out.push(spare("spare", p, 226 - p, g));
+      break;
+    }
+    case 17: {
+      let p = D;
+      for (let k = 0; k < 3; k++) {
+        const g = `Almanac ${k + 1}`;
+        out.push(F(`id${k}`, "Data ID", p, 2, { group: g, desc: "Data identifier, 00 for almanac data." })); p += 2;
+        out.push(F(`prn${k}`, "PRN", p, 8, { group: g, desc: "PRN of the GEO this almanac describes. 0 means the entry is unused.", meaning: (r) => (r ? `SBAS PRN ${r}` : "Unused entry") })); p += 8;
+        out.push(F(`health${k}`, "Health and status", p, 8, { group: g, desc: "Bit flags: ranging, corrections and integrity availability, plus service provider ID in the upper bits." })); p += 8;
+        out.push(F(`x${k}`, "X", p, 15, { signed: true, scale: 2600, unit: "m", group: g, desc: "GEO position, ECEF X (coarse)." })); p += 15;
+        out.push(F(`y${k}`, "Y", p, 15, { signed: true, scale: 2600, unit: "m", group: g, desc: "GEO position, ECEF Y (coarse)." })); p += 15;
+        out.push(F(`z${k}`, "Z", p, 9, { signed: true, scale: 26000, unit: "m", group: g, desc: "GEO position, ECEF Z (coarse)." })); p += 9;
+        out.push(F(`vx${k}`, "Ẋ", p, 3, { signed: true, scale: 10, unit: "m/s", group: g, desc: "GEO velocity, ECEF X." })); p += 3;
+        out.push(F(`vy${k}`, "Ẏ", p, 3, { signed: true, scale: 10, unit: "m/s", group: g, desc: "GEO velocity, ECEF Y." })); p += 3;
+        out.push(F(`vz${k}`, "Ż", p, 4, { signed: true, scale: 40.96, unit: "m/s", group: g, desc: "GEO velocity, ECEF Z." })); p += 4;
+      }
+      out.push(F("t0", "t0", p, 11, { scale: 64, unit: "s", group: "Almanac time", desc: "Almanac reference time, seconds of the day.", meaning: (r, v) => secondsOfDay(v) }));
+      break;
+    }
+    case 18: {
+      const band = getU(b, 18, 4);
+      out.push(F("nbands", "Bands broadcast", D, 4, { group: "Header", desc: "How many IGP bands this SBAS broadcasts in total." }));
+      out.push(F("band", "Band", 18, 4, { group: "Header", desc: "Band number. Bands 0–8 are 40° longitude strips, 9 and 10 cover the north and south polar caps.", meaning: (r) => (r <= 8 ? `${-180 + 40 * r}° to ${-145 + 40 * r}° longitude` : r === 9 ? "North of 60°" : r === 10 ? "South of 60°S" : "Invalid band") }));
+      out.push(F("iodi", "IODI", 22, 2, { group: "Header", desc: "Issue of data, ionosphere. MT26 messages with the same band and IODI use this mask." }));
+      out.push(F("mask", "IGP mask", 24, 201, { kind: "mask", group: "IGP mask", desc: "One bit per ionospheric grid point in the band. MT26 delays fill the set bits in order, 15 per block.",
+        bitLabel: (i) => `bit ${i + 1}: IGP ${latLonText(igpCoords(band, i + 1))}`,
+        meaning: () => { let n = 0; for (let i = 0; i < 201; i++) n += b[24 + i]; return `${n} grid points set`; } }));
+      out.push(spare("spare", 225, 1, "IGP mask"));
+      break;
+    }
+    case 24:
+      out.push(...fastFields(null, D, 86, 6, "iodp"));
+      out.push(F("iodp", "IODP", 110, 2, { group: "Fast corrections", desc: DESC.iodp }));
+      out.push(F("block", "Block ID", 112, 2, { group: "Fast corrections", desc: "Which group of 13 slots the six fast corrections belong to: slots 13·block+1 to 13·block+6." }));
+      out.push(F("iodf", "IODF", 114, 2, { group: "Fast corrections", desc: DESC.iodf }));
+      out.push(spare("spare", 116, 4, "Fast corrections"));
+      out.push(...ltcHalf(b, 120, "h1", "Long-term half"));
+      break;
+    case 25:
+      out.push(...ltcHalf(b, D, "h0", "First half"));
+      out.push(...ltcHalf(b, 120, "h1", "Second half"));
+      break;
+    case 26: {
+      out.push(F("band", "Band", D, 4, { group: "Header", desc: "IGP band these delays belong to." }));
+      out.push(F("block", "Block ID", 18, 4, { group: "Header", desc: "Block of 15 grid points within the band mask: points 15·block+1 to 15·block+15.", meaning: (r) => `Mask points ${15 * r + 1}–${15 * r + 15}` }));
+      for (let i = 0; i < 15; i++) {
+        const g = `Grid point ${i + 1}`;
+        out.push(F(`delay${i}`, "Vertical delay", 22 + 13 * i, 9, { scale: 0.125, unit: "m", group: g, igpIndex: i, desc: "Vertical ionospheric delay at the grid point, on L1. 511 means do not use.", meaning: (r, v) => (r === 511 ? "Do not use" : `${fmt(v, 3)} m vertical delay`) }));
+        out.push(F(`givei${i}`, "GIVEI", 31 + 13 * i, 4, { group: g, igpIndex: i, desc: "Grid Ionospheric Vertical Error indicator: 99.9 % bound on the vertical delay error. 15 means not monitored.", meaning: (r) => giveText(r) }));
+      }
+      out.push(F("iodi", "IODI", 217, 2, { group: "Trailer", desc: "Issue of data, ionosphere. Must match the MT18 mask for this band." }));
+      out.push(spare("spare", 219, 7, "Trailer"));
+      out.forEach((f) => { if (f.key.startsWith("delay") || f.key.startsWith("givei")) f.igpIndex = +f.group.split(" ")[2] - 1; });
+      break;
+    }
+    case 27: {
+      const g = "Service message";
+      const spec = [["iods", "IODS", 3], ["nmsg", "Number of service messages", 3], ["msgnum", "Service message number", 3], ["nreg", "Number of regions", 3], ["prio", "Priority code", 2], ["dudrein", "δUDRE indicator inside", 4], ["dudreout", "δUDRE indicator outside", 4]];
+      let p = D;
+      for (const [key, name, len] of spec) { out.push(F(key, name, p, len, { group: g, desc: name + "." })); p += len; }
+      for (let k = 0; k < 5; k++) {
+        const rg = `Region ${k + 1}`;
+        out.push(F(`lat1${k}`, "Latitude 1", p, 8, { signed: true, unit: "°", scale: 1, group: rg, desc: "First corner latitude." })); p += 8;
+        out.push(F(`lon1${k}`, "Longitude 1", p, 9, { signed: true, unit: "°", scale: 1, group: rg, desc: "First corner longitude." })); p += 9;
+        out.push(F(`lat2${k}`, "Latitude 2", p, 8, { signed: true, unit: "°", scale: 1, group: rg, desc: "Second corner latitude." })); p += 8;
+        out.push(F(`lon2${k}`, "Longitude 2", p, 9, { signed: true, unit: "°", scale: 1, group: rg, desc: "Second corner longitude." })); p += 9;
+        out.push(F(`shape${k}`, "Region shape", p, 1, { group: rg, desc: "0: triangle, 1: quadrangle." })); p += 1;
+      }
+      out.push(spare("spare", p, 226 - p, g));
+      break;
+    }
+    case 28: {
+      out.push(F("iodp", "IODP", D, 2, { group: "Header", desc: DESC.iodp }));
+      let p = 16;
+      for (let k = 0; k < 2; k++) {
+        const g = `Satellite ${k + 1}`;
+        out.push(F(`slot${k}`, "PRN mask slot", p, 6, { group: g, kind: "slot", iodpKey: "iodp", desc: "Satellite position in the MT1 mask. 0 means unused." })); p += 6;
+        out.push(F(`sexp${k}`, "Scale exponent", p, 3, { group: g, desc: "Scale factor 2^(exponent−5) applied to the Cholesky factor elements.", meaning: (r) => `scale 2^${r - 5}` })); p += 3;
+        for (const [name, len, signed] of [["E1,1", 9, false], ["E2,2", 9, false], ["E3,3", 9, false], ["E4,4", 9, false], ["E1,2", 10, true], ["E1,3", 10, true], ["E1,4", 10, true], ["E2,3", 10, true], ["E2,4", 10, true], ["E3,4", 10, true]]) {
+          out.push(F(`e${name.replace(",", "")}${k}`, name, p, len, { signed, group: g, desc: "Element of the upper-triangular Cholesky factor of the clock-ephemeris covariance." })); p += len;
+        }
+      }
+      break;
+    }
+    case 63:
+      out.push(spare("spare", D, 212, "Null message"));
+      break;
+    default:
+      out.push(F("payload", "Payload", D, 212, { kind: "spare", group: "Payload", desc: "No layout is defined here for this message type.", meaning: () => "Not interpreted" }));
+  }
+  return out;
+}
+
+function headerFields(msg) {
+  return [
+    F("preamble", "Preamble", 0, 8, { kind: "header", group: "Frame header", desc: "8 bits of the 24-bit unique word 0x53 9A C6, sent one byte per message in rotation. It marks the start of each 1-second frame.",
+      meaning: (r) => { const i = PREAMBLES.indexOf(r); return i < 0 ? "Not a valid SBAS preamble" : `0x${r.toString(16).toUpperCase()}: part ${i + 1} of 3 of the unique word`; } }),
+    F("type", "Message type", 8, 6, { kind: "header", group: "Frame header", desc: "Message type identifier (0–63).", meaning: (r) => `MT${r}: ${MT_NAMES[r] || "unassigned"}` }),
+  ];
+}
+function trailerFields(msg) {
+  const out = [F("crc", "CRC-24Q parity", 226, 24, { kind: "crc", group: "Parity", desc: "24-bit cyclic redundancy check over the preceding 226 bits (polynomial 0x1864CFB). A mismatch means the frame is corrupted and must be discarded.",
+    meaning: () => (msg.crcOk ? "Matches computed CRC" : `Mismatch: computed 0x${msg.crcCalc.toString(16).toUpperCase().padStart(6, "0")}`) })];
+  if (msg.nbits > 250) out.push(F("pad", "Padding", 250, msg.nbits - 250, { kind: "pad", group: "Parity", desc: "Fill bits added so the 250-bit frame is a whole number of hex digits. Not transmitted.", meaning: (r) => (r === 0 ? "Zero" : "Non-zero padding") }));
+  return out;
+}
+
+/* Decode one message: returns the field list with raw, value and meaning. */
+function decodeMessage(msg, ctx) {
+  const fields = [...headerFields(msg), ...dataFields(msg), ...trailerFields(msg)];
+  const all = {};
+  for (const f of fields) {
+    if (f.len > 48) { f.raw = null; continue; }
+    f.raw = f.signed ? getS(msg.bits, f.start, f.len) : getU(msg.bits, f.start, f.len);
+    all[f.key] = f.raw;
+  }
+  for (const f of fields) {
+    f.bitsText = f.len <= 64 ? bitString(msg.bits, f.start, f.len) : null;
+    f.value = f.raw != null && f.scale != null ? f.raw * f.scale : null;
+    let meaning = "";
+    try { meaning = f.meaning ? f.meaning(f.raw, f.value, all, ctx, msg) : ""; } catch (e) { meaning = ""; }
+    f.meaningText = meaning || "";
+    // Slot references (fast corrections, MT7, MT28, long-term halves)
+    const slot = f.kind === "slot" ? f.raw : f.slot;
+    if (slot != null && (f.kind === "slot" || f.slot != null)) {
+      if (f.kind === "slot" && slot === 0) { f.sat = { unused: true }; }
+      else {
+        const iodp = f.iodpKey ? all[f.iodpKey] : null;
+        let s = slot;
+        if (msg.mt === 24 && f.slot != null) s = 13 * all.block + f.slot + 1;
+        f.slotResolved = s;
+        f.sat = resolveSlot(ctx, msg, s, iodp);
+      }
+    }
+    if (f.igpIndex != null && msg.mt === 26) {
+      const idx = 15 * all.block + f.igpIndex;
+      f.igp = resolveIgp(ctx, msg, all.band, all.iodi, idx);
+      f.igpMaskIndex = idx;
+    }
+  }
+  // Group labels for slot / IGP groups
+  for (const f of fields) {
+    if (f.sat && f.sat.name && f.slot != null) f.groupLabel = `Slot ${f.slotResolved} · ${f.sat.name}`;
+    else if (f.sat && f.sat.beyond && f.slot != null) f.groupLabel = `Slot ${f.slotResolved} · past end of mask`;
+    else if (f.igp && f.igp.coords) f.groupLabel = `Grid point ${f.igpMaskIndex + 1} · ${latLonText(f.igp.coords)}`;
+    else if (f.igp && f.igp.beyond) f.groupLabel = `Grid point ${f.igpMaskIndex + 1} · past end of mask`;
+    if (f.kind === "slot" && f.sat) {
+      f.meaningText = f.sat.unused ? "Unused entry" : f.sat.name ? `${f.sat.name} (${prnCodeSystem(f.sat.code)})` : f.sat.beyond ? "Past the end of the mask" : f.sat.missing || "";
+    }
+  }
+  return fields;
+}
+
+/* One-line summary for the message list. */
+function summarize(msg, ctx) {
+  const b = msg.bits;
+  switch (msg.mt) {
+    case 1: { let n = 0; for (let i = 0; i < 210; i++) n += b[D + i]; return `${n} satellites · IODP ${getU(b, 224, 2)}`; }
+    case 2: case 3: case 4: case 5: {
+      let mon = 0; for (let i = 0; i < 13; i++) if (getU(b, 174 + 4 * i, 4) < 14) mon++;
+      return `IODF ${getU(b, D, 2)} · ${mon} monitored`;
+    }
+    case 6: { let mon = 0; for (let i = 0; i < 51; i++) if (getU(b, 22 + 4 * i, 4) < 14) mon++; return `${mon} slots monitored`; }
+    case 9: return `t0 ${secondsOfDay(getU(b, 22, 13) * 16).split(" ")[0]} · URA ${getU(b, 35, 4)}`;
+    case 18: { let n = 0; for (let i = 0; i < 201; i++) n += b[24 + i]; return `band ${getU(b, 18, 4)} · ${n} IGPs · IODI ${getU(b, 22, 2)}`; }
+    case 24: case 25: case 28: {
+      const fields = decodeMessage(msg, ctx).filter((f) => f.kind === "slot" && f.sat && f.sat.name);
+      return fields.map((f) => f.sat.name).join(", ") || "no satellites";
+    }
+    case 26: return `band ${getU(b, D, 4)} · block ${getU(b, 18, 4)}`;
+    default: return "";
+  }
+}
+
+if (typeof module !== "undefined") module.exports = { parseFile, buildContext, decodeMessage, summarize, MT_NAMES, crc24q, hexToBits };
+
+</script>
+<script>
+const SAMPLE_NAME = "sbas_msg_PRN133.ems";
+const SAMPLE = "; SBAS/EGNOS Message Service (EMS) file\n; Generated by GNSS-SDR v0.0.20\n; Satellite: SBAS PRN 133\n; TOW field: receiver time in seconds from recording start\n;            GPS week = 0  (no absolute GPS fix in this output)\n; Msg bytes: 32 bytes (250-bit SBAS frame zero-padded to 256 bits)\n;   Layout: preamble(8b) type(6b) data(212b) CRC-24Q(24b) pad(6b)\n; Format:   <gps_week> <tow_s> <prn> <msg_type> : <64_hex_chars>\n;\n   0      8.209 133 25 : 9a6611b00301405406000000ffcbfba2a003802ff2000000003fb2fedb9516c0\n   0      9.209 133 28 : c67380be9df0f080e6049afe6179c2800000000000000000000000000cc0a340\n   0     10.209 133  2 : 5309ffdbfebfcdffdffdffdfffff9ffc001fffffdffdd7bbbb9797a3a7475840\n   0     11.209 133  4 : 9a11fffffd1ffdfffff400002c02f9c1ffdffdffdffd5fbb96aabfffc459a100\n   0     12.209 133  3 : c60ec014001ffffe8001ffdffdffc01000400400dffddbb17bb9d5679ab5ba80\n   0     13.209 133 63 : 53fc0000000000000000000000000000000000000000000000000000018036c0\n   0     14.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0     15.209 133 26 : c66a4435619b0c5862c2f817c0b605b02d817c0b605b02b815d0ae802f091f00\n   0     16.209 133  2 : 530affd7feffcdffdffdffdfffff5fffffdffc001ffdd7bbbb9797a39b080ac0\n   0     17.209 133  4 : 9a12fffbfcdffdfffff40000280279bdffdffdffdffd5fbb96aabffff86efc80\n   0     18.209 133  3 : c60cc01bffdffffe4005ffdffdffc00c000008009ffddbb17bb9d5678896e340\n   0     19.209 133  1 : 5307fffffffc000000000000000000000000a8000000000000000000e1417400\n   0     20.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0     21.209 133 28 : c67308b5e08d608017fb10c0f775ad2c28575730800df37cfd277bd9215356c0\n   0     22.209 133  2 : 5308ffdbfebfd1ffdffdffdfffff9ffc001fffffdffdd7bbbb9797a3be8342c0\n   0     23.209 133  4 : 9a10fffffd1ffdfffff400002c02b9c1ffdffdffdffd5fbb96aabfffc2304cc0\n   0     24.209 133  3 : c60dc014001ffffe8001ffdffdffc01000400400dffddbb17bb9d567a8bd6480\n   0     25.209 133 25 : 53661da807fe1fe0007f80ff7ecbffa55a020017fdff8020200012fff5996980\n   0     26.209 133 25 : 9a66413ff800804803800000004bd3af05fdbfa80a008020000012f4d6b4d880\n   0     27.209 133 25 : c666b1e007023fcbfc7f800000cbcf80000000000000000000000000157b6040\n   0     28.209 133  2 : 5309ffd7feffd1ffdffdffdfffff5fffffdfffffdffdd7bbbb9797a3b6b57780\n   0     29.209 133  4 : 9a11fffbfcdffdfffff7ffc0280279bdffdffdffdffd5fbb96aabfffe6ca5b40\n   0     30.209 133  3 : c60ec01bffdffffe4005ffdffdffc00c000004009ffddbb17bb9d56783a624c0\n   0     31.209 133 28 : 537304a72be9e080a1f9053a6729d12e6ab4176843b6182e4e350adf8269cc40\n   0     32.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0     33.209 133 25 : c66674081502dfe4027f800080cbebb9d602ffcff3021fffe01ff2f9f4213840\n   0     34.209 133  2 : 530affdbfebfd1ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3869e3a40\n   0     35.209 133  4 : 9a12fffffd1ffdfffff400002402b9c1ffdffdffdffd5fbb96aabfffd33d1080\n   0     36.209 133  3 : c60cc014001ffffe8001ffdffdffc01000400400dffddbb17bb9d56799cbc4c0\n   0     37.209 133 28 : 537328bae371f080881780192a9d873856acca2043fdf7412b8c1529c45d56c0\n   0     38.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0     39.209 133 25 : c6665107fcff00280400807f804bdbb2e3fe3f9fed007fffbf8012f6d7c01300\n   0     40.209 133  2 : 5308ffd7feffd1ffdffdffdfffff5fffffdfffffdffdd7bbbb9797a387c3d7c0\n   0     41.209 133  4 : 9a10fffbfcdffdfffff7ffc02c0239bdffdffdffdffd5fbb96aabfffe99a2780\n   0     42.209 133  3 : c60dc01bffdffffe4005ffdffdffc00c000004009ffddbb17bb9d567b1aefac0\n   0     43.209 133 25 : 5366c2eff7ff6003fd008000004bd7800000000000000000000000000d95ac40\n   0     44.209 133 26 : 9a6a481fc13d0a685342d812b09d05282d418a0d5866c31617b0b60032338140\n   0     45.209 133 28 : c67320c95ab12087c40fa13dc83bd43669af3ad0403c1ed53cb8490852fcf280\n   0     46.209 133  2 : 5309ffdbfebfd1ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3b496e440\n   0     47.209 133  4 : 9a11fffffd1ffdfffff400002802b9b9ffdffdffdffd5fbb96aabffff3f51c80\n   0     48.209 133  3 : c60ec014001ffffe8001ffdffdffc00c00000400dffddbb17bb9d5678ba2d800\n   0     49.209 133  9 : 5324ee5f8161494b84f4a951c00e2630170ff88ffeacfffffffbf940d26c8240\n   0     50.209 133 18 : 9a4964fffffffe000000000fffff00007ffff00007fffe00007f81000c830440\n   0     51.209 133 26 : c66a4c25811d08683f41ba06e09683742180eb07d042827416b0bd8022f58b40\n   0     52.209 133  2 : 530affd7feffd1ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a39d2780c0\n   0     53.209 133  4 : 9a12fffbfcdffdfffff7ffc0240239c1ffdffdffdffd5fbb96aabfffe4c2bdc0\n   0     54.209 133  3 : c60cc01bffdffffe4005ffdffdffc00c004004009ffddbb17bb9d567994273c0\n   0     55.209 133 28 : 537349225571e04017cdf75c80c83d4754e2e13004df06d17f80210123a999c0\n   0     56.209 133  7 : 9a1c73ffffffffffffffffffffffffffffffffffc00000000000000028238240\n   0     57.209 133 25 : c666795ff9ffbffffd00017f804bef8000000000000000000000000023ba7b00\n   0     58.209 133  2 : 5308ffdbfebfd1ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a385e04400\n   0     59.209 133  4 : 9a10fffffd1ffdfffff40000280279b9ffdffdffdffd5fbb96aabffffa315480\n   0     60.209 133  3 : c60dc014001ffffe8001ffdffdffc00800000000dffddbb17bb9d567abb03640\n   0     61.209 133 28 : 53730c0f498cd10057f602df4fa41122162622408043defcaeabd7f7f147a7c0\n   0     62.209 133 10 : 9a28360984c80130644dc53800da24b00000000000000000000000000e2b7500\n   0     63.209 133 26 : c66a502f815c0a584ec25a0ed06682b41ba12f05682b41980ab0658016fcc740\n   0     64.209 133  2 : 5309ffd7feffd1ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3af2f5ec0\n   0     65.209 133  4 : 9a11fffbfcdffdfffff7ffc02c01f9bdffdffdffdffd5fbb96aabfffc1b3b300\n   0     66.209 133  3 : c60ec01bffdffffec005ffdffdffc00c00000400dffddbb17bb9d567aabfe940\n   0     67.209 133 18 : 53494c00007f80001fc00003f00000f800003c00000e000003000000290b7440\n   0     68.209 133 26 : 9a6a541b60fb08d84ec27812c08d84301fa0ed07683741ba07d0368032eb6200\n   0     69.209 133 63 : c6fc0000000000000000000000000000000000000000000000000000085c16c0\n   0     70.209 133  2 : 530affdbfeffd1ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a395d11f40\n   0     71.209 133  4 : 9a12fffffd1ffdfffff40000200239b9ffdffdffdffd5fbb96aabfffdc234540\n   0     72.209 133  3 : c60cc014001ffffe8001ffdffdffc008000000009ffddbb17bb9d567a5991500\n   0     73.209 133 25 : 5366a66002019ff401ff80ff004c0780000000000000000000000000019d1540\n   0     74.209 133 25 : 9a6661d801003fb7ff000181ff4be3b621fcffd80c0060001fe012f8cbdc28c0\n   0     75.209 133 63 : c6fc0000000000000000000000000000000000000000000000000000085c16c0\n   0     76.209 133  2 : 5308ffd7feffd1ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a39e59fe80\n   0     77.209 133  4 : 9a10fffbfd1ffdfffff7ffc0240279bdffdffdffdffd5fbb96aabfffd5888dc0\n   0     78.209 133  3 : c60dc01bffdffffec005ffdffdffc00c00000400dffddbb17bb9d56798b73740\n   0     79.209 133 28 : 537338cad9a85087722affbbf75dd7b06bf4d8f8408d0d6faeb055cafc6b7700\n   0     80.209 133 25 : 9a660baffe05c0681680fe807e4bf7a085fdbfe806fac03fe01f92fdff8f3900\n   0     81.209 133 25 : c66611b00301405406000000ffcbfba2a003802ff2000000003fb2fecf4e7740\n   0     82.209 133  2 : 5309ffdbfeffd1ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3a7d9c140\n   0     83.209 133  4 : 9a11fffffd1ffdfffff400002801b9b5ffdffdffdffd5fbb96aabfffec782900\n   0     84.209 133  3 : c60ec014001ffffe8001ffdffdffc00800000400dffddbb17bb9d5679e7d7f00\n   0     85.209 133 28 : 537386b54661e00b2212b8ff205401c565c2a0f00564079d2f581b00c6ccd980\n   0     86.209 133 26 : 9a6a5811806d04682340da05e02e80000000000000000000000000003f057340\n   0     87.209 133 63 : c6fc0000000000000000000000000000000000000000000000000000085c16c0\n   0     88.209 133  2 : 530affd7feffd1ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a39d2780c0\n   0     89.209 133  4 : 9a12fffbfd1ffdfffff7ffc0240239b1ffdffdffdffd5fbb96aabfffdf895700\n   0     90.209 133  3 : c60cc01bffdffffec005ffdffdffc00c00000000dffddbb17bb9d567ae040040\n   0     91.209 133 63 : 53fc0000000000000000000000000000000000000000000000000000018036c0\n   0     92.209 133  1 : 9a07fffffffc000000000000000000000000a8000000000000000000fc463580\n   0     93.209 133 28 : c673309b92d3608095e673ffb84012322b533d6080275a7e3b03f637f2972b40\n   0     94.209 133  2 : 5308ffdbfeffd1ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a396af6100\n   0     95.209 133  4 : 9a10fffffd5ffdfffff400001c0279b9ffdffdffdffd5fbb96aabfffecfe1240\n   0     96.209 133  3 : c60dc014001ffffe8001ffdffdffc008004004011ffddbb17bb9d567abc44200\n   0     97.209 133 25 : 5366f8b016ff3fdc00817f01004bf7c0b4013f9004007fe0002032fecca22000\n   0     98.209 133 18 : 9a49480000ff80007fc0003fe0000ff80007fc0003fe0001ff0000ff869e21c0\n   0     99.209 133 26 : c6680045a1cc15688f43b62af15e89703d63cf19f8b3c69c2dd13600194a1c00\n   0    100.209 133  2 : 5309ffd7ff3fd1ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3b6519b00\n   0    101.209 133  4 : 9a11fffbfd1ffdfffff7ffc0200239b5ffdffdffdffd5fbb96aabffff167bf00\n   0    102.209 133  3 : c60ec01bffdffffec005ffdffdffc00c00000800dffddbb17bb9d567a2f15080\n   0    103.209 133 25 : 5366b1e006023fcbfc80800080cc0f80000000000000000000000000348b6d80\n   0    104.209 133 25 : 9a66413ff800804803800000004c13af05fdffa80a00800000001304df8a53c0\n   0    105.209 133 28 : c6733cbd695110815189699bffd5d2be132f43c883ebf3c04c8fd0178fd76b40\n   0    106.209 133  2 : 530affdbfeffd1ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a395d11f40\n   0    107.209 133  4 : 9a12fffffd5ffdfffff40000240179b1ffdffdffdffd5fbb96aabffffb182e40\n   0    108.209 133  3 : c60cc014001ffffec001ffdffdffc008004004011ffddbb17bb9d5679191c500\n   0    109.209 133 28 : 537380bc5c707080f4041abe316dc280000000000000000000000000391d2fc0\n   0    110.209 133 25 : 9a661da807fe1fe0007f80ff7ecbffa55a020017fdff8020200012ffe89e2800\n   0    111.209 133 26 : c668043f63ff1bf8bfc67c2bd13587e86de3af1878bbc53a25b0fd002fc94000\n   0    112.209 133  2 : 5308ffdbff3fd1ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a391a6e6c0\n   0    113.209 133  4 : 9a10fffbfd1ffdfffff400002001f9b5ffdffdffdffd5fbb96aabffff5e25240\n   0    114.209 133  3 : c60dc01bffdffffec005ffdffdffc00c00000800dffddbb17bb9d56790f98e80\n   0    115.209 133 63 : 53fc0000000000000000000000000000000000000000000000000000018036c0\n   0    116.209 133 26 : 9a68085fe35f1970ab04761fa1bf8c7453822b0ed8000000000000002f9daa80\n   0    117.209 133 63 : c6fc0000000000000000000000000000000000000000000000000000085c16c0\n   0    118.209 133  2 : 5309ffdbfeffd1ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3a7d9c140\n   0    119.209 133  4 : 9a11fffffd5ffdfffff40000180279b1ffdffdffdffd5fbb96aabfffff0e6d00\n   0    120.209 133  3 : c60ec014001ffffec001ffdffdffc008004004011ffddbb17bb9d56792efbb40\n   0    121.209 133 63 : 53fc0000000000000000000000000000000000000000000000000000018036c0\n   0    122.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0    123.209 133 25 : c66674081502dfe4027f800080cbebb9d602ffcff3021fffe01ff2f9f4213840\n   0    124.209 133  2 : 530affdffebfd5ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3b6833b00\n   0    125.209 133  4 : 9a12fffbfd1ffdfffff400002001b9b5ffdffdffdffd5fbb96aabfffc1836180\n   0    126.209 133  3 : c60cc01bffdffffec005ffdffdffc00c00000800dffddbb17bb9d567a18f2ec0\n   0    127.209 133 28 : 53730869bf7a51002ff221a21eef5c2c28578718800bf43d1d137bd986159ec0\n   0    128.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0    129.209 133 63 : c6fc0000000000000000000000000000000000000000000000000000085c16c0\n   0    130.209 133  2 : 5308ffdbfeffd5ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3b54596c0\n   0    131.209 133  4 : 9a10fffffd5ffdfffff7ffc0240139adffdffdffdffd5fbb96aabfffeb582f80\n   0    132.209 133  3 : c60dc014001ffffec001ffdffdffc008004004011ffddbb17bb9d567a0e76540\n   0    133.209 133 28 : 537304a7ac8a00809ff9857a8729d02e69b3670043b2172e7e3d01e233c1bac0\n   0    134.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0    135.209 133 25 : c666c2eff8ff6003fd00000080cc1780000000000000000000000000012a4640\n   0    136.209 133  2 : 5309ffdffebfd5ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3848be500\n   0    137.209 133  4 : 9a11fffbfd1ffdfffff400001c01b9b1ffdffdffdffd5fbb96aabffff1a75940\n   0    138.209 133  3 : c60ec01bffdffffec005ffdffdffc00c00000800dffddbb17bb9d567a2f15080\n   0    139.209 133 25 : 53665107fdff002404000080004c1bb2e3fdff87e900601fdfc01306d8755980\n   0    140.209 133 26 : 9a684063e36d17e09ec4361ca2570db463a2bc12d882c3943bd1ae801ec43e40\n   0    141.209 133 28 : c67328bde532f0807c197f39729f8138570cca8843fdf7814bb01f2ab1acd500\n   0    142.209 133  2 : 530affdbfeffd5ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3b63be880\n   0    143.209 133  4 : 9a12fffffd5ffdfffff7ffc0180239adffdffdffdffd5fbb96aabfffde38cc80\n   0    144.209 133  3 : c60cc014001ffffec001ffdffdffc008004004011ffddbb17bb9d563a0c26740\n   0    145.209 133  9 : 5324ee5f8161494b84f4a951c00e2630170ff88ffeacfffffffbf940d26c8240\n   0    146.209 133 26 : 9a68446382bb12d87ec39642d1e68db06362bb12587ec39643d1e6002f6ebd80\n   0    147.209 133 26 : c668486b630b15509283f61ca21e0eec6b62fa15509283f61ca225801fdcbac0\n   0    148.209 133  2 : 5308ffdffebfd5ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3b5fd4540\n   0    149.209 133  4 : 9a10fffbfd1ffdfffff40000200179b1ffdffdffdffd5fbb96aabfffef905080\n   0    150.209 133  3 : c60dc01bffdfffff0005ffdffdffc00c00000800dffddbb17bb9d5639043d800\n   0    151.209 133 28 : 537320c859f0f087c21220bda03dd63669efcb38403b1e555cd04b09f255d200\n   0    152.209 133 10 : 9a28360984c80130644dc53800da24b00000000000000000000000000e2b7500\n   0    153.209 133 25 : c666795ff9ffbffffd00017f804bef8000000000000000000000000023ba7b00\n   0    154.209 133  2 : 5309ffdbfeffd5ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a384333680\n   0    155.209 133  4 : 9a11fffffd5ffdfffff7ffc01c0139adffdffdffdffd5fbb96aabfffc4e45f00\n   0    156.209 133  3 : c60ec014001ffffec001ffdffdffc008004004011ffddbb17bb9d563a3bc1900\n   0    157.209 133 28 : 5373492355f210401bce775c40c23fc754e2e13004df06d17f80210129c1a900\n   0    158.209 133  7 : 9a1c73ffffffffffffffffffffffffffffffffffc00000000000000028238240\n   0    159.209 133 25 : c666a66002019ff401ff80ff004c078000000000000000000000000008413540\n   0    162.209 133  3 : c60cc01bffdfffff0001ffdffdffc00c00000800dffddbb17bb9d563b7412900\n   0    163.209 133 63 : 53fc0000000000000000000000000000000000000000000000000000018036c0\n   0    164.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0    165.209 133 28 : c6730c114aee410061f8037ee79411a219c742b08050d9fc4e77cff634fe1e80\n   0    166.209 133  2 : 5308ffdbfeffd5ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3b54596c0\n   0    167.209 133  4 : 9a10fffffd5ffdfffff7ffc01c01f9a5ffdffdffdffd5fbb96aabfffe69f5900\n   0    168.209 133  3 : c60dc014001ffffec001ffdffdffc008004004011ffddbb17bb9d56391b4c700\n   0    169.209 133 25 : 536661d801009fc3fe7f81017f4c23b621fcffd80b00600000001308ec7e5c80\n   0    170.209 133 25 : 9a660baffe05c0681680fe807e4bf7a085fdbfe806fac03fe01f92fdff8f3900\n   0    171.209 133 25 : c66611b00301405406000000ffcbfba2a003802ff2000000003fb2fecf4e7740\n   0    172.209 133  2 : 5309ffdffebfd5ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3848be500\n   0    173.209 133  4 : 9a11fffbfd1ffdfffff40000180179adffdffdffdffd5fbb96aabfffc8a16bc0\n   0    174.209 133  3 : c60ec01bffdfffff0001ffdffdffc00c00000800dffddbb17bb9d563b43f5740\n   0    175.209 133 17 : 53448300c67d1e38000010a015ffe7720040021c02dd5cc1f008012fc7a68780\n   0    176.209 133 18 : 9a4940000001800000e00000f0000e7800073c00039e00018f00000f9cd3bf00\n   0    177.209 133  1 : c607fffffffc000000000000000000000000a8000000000000000000e89d5400\n   0    179.209 133  4 : 9a12fffffd5ffdfffff7ffc01c0139b1ffdffdffdffd5fbb96aabffffe61cac0\n   0    180.209 133  3 : c60cc014001ffffec005ffdffdffc008004004011ffddbb17bb9d563b6b63600\n   0    181.209 133 28 : 537338c9da28a087782b7fdbdf57d6306af4689840970cb00ea053ccfc6d1b80\n   0    182.209 133 26 : 9a684c79635a17d0a684741eb0e593708963ca1ad0ba851421a0f5000d8f5d80\n   0    183.209 133 25 : c666413ff800804803800000004c13af05fdffa80a00800000001304cb513240\n   0    184.209 133  2 : 5308ffdffebfd5ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3b5fd4540\n   0    185.209 133  4 : 9a10fffbfd1ffdfffff400001001b9a5ffdffdffdffd5fbb96aabffff8a94fc0\n   0    186.209 133  3 : c60dc018001fffff0001ffdffdffc00c00000400dffddbb17bb9d563a4b2aa40\n   0    187.209 133 25 : 5366f8b016ff3fdc00817f01004bf7c0b4013f9004007fe0002032fecca22000\n   0    188.209 133 25 : 9a661da807fe1fe0007f80ff7ecbffa55a020017fdff8020200012ffe89e2800\n   0    189.209 133 28 : c67386b54661e00b2212b8ff205401c565c2a0f00564079d2f581b00cf10f980\n   0    190.209 133  2 : 5309ffdbfeffd9ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3819f1000\n   0    191.209 133  4 : 9a11fffffd5ffdfffff7ffc01801b9a1ffdffdffdffd5fbb96aabffffc1082c0\n   0    192.209 133  3 : c60ec014001ffffec001ffdffdffc008004004011ffddbb17bb9d563a3bc1900\n   0    193.209 133 25 : 5366b1e006023fcbfc80800080cc0f80000000000000000000000000348b6d80\n   0    194.209 133 26 : 9a6850396000000000000000000000000000000000000000000000003d083380\n   0    195.209 133 26 : c668809d845b1e50ce859426a10507683964dc2258ee86342ba12d00133a6300\n   0    196.209 133  2 : 530affdfff3fd9ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3b91efd40\n   0    197.209 133  4 : 9a12fffbfd5ffdfffff400001c0139a9ffdffdffdffd5fbb96aabfffc21feb40\n   0    198.209 133  3 : c60cc018005fffff0005ffdffdffc00c00000800dffddbb17bb9d56398b1c780\n   0    199.209 133 25 : 536674081402dfe802800000814c2bb9d602bfc7f301e000005fb309f2c7be00\n   0    200.209 133 28 : 9a73309bd2f3508099e0f3ffe84210322b538dc8803058bdfacff6385390e540\n   0    201.209 133 63 : c6fc0000000000000000000000000000000000000000000000000000085c16c0\n   0    202.209 133  2 : 5308ffdbfeffd9ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3b0e9b040\n   0    203.209 133  4 : 9a10fffffd9ffdfffff40000100179adffdffdffdffd5fbb96aabfffc0ba1700\n   0    204.209 133  3 : c60dc014001ffffec001ffdffdffc008004004011ffddbb17bb9d56391b4c700\n   0    205.209 133 28 : 53733cbba8d100813b8f69bbefd3d4be1490143083f2f1003c4fcf1a338d9c80\n   0    206.209 133 26 : 9a68843f41da0e593308763ab18d0ae84d420a0f506ec95843b1d580022c6c00\n   0    207.209 133 26 : c668886542ca12d08283f61bb23e106c75632a16509a845421b0e5802eebf000\n   0    208.209 133  2 : 5309ffdfff3fd9ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a38b162340\n   0    209.209 133  4 : 9a11fffbfd5ffdfffff7ffc01401f9a1ffdffdffdffd5fbb96aabfffddc5c8c0\n   0    210.209 133  3 : c60ec018005fffff0005ffdffdffc00c00000800dffddbb17bb9d5639bcfb9c0\n   0    211.209 133 63 : 53fc0000000000000000000000000000000000000000000000000000018036c0\n   0    212.209 133 26 : 9a688c8b840b1d58d2c5f428a11d086c39643c2058f2c6f432a15d00072a86c0\n   0    213.209 133 28 : c67380be5dd0e080f4019b3e297dbf8000000000000000000000000033d75940\n   0    214.209 133  2 : 530affdbfeffd9ffdffdffdfffff9fffffdfffff9ffdd7bbbb9797a3b397ce00\n   0    215.209 133  4 : 9a12fffffd9ffdfffff400001801799dffdffdffdffd5fbb96aabfffeb1292c0\n   0    216.209 133  3 : c60cc014001fffff4001ffdffdffc008004004011ffddbb17bb9d5639a08b4c0\n   0    217.209 133 63 : 53fc0000000000000000000000000000000000000000000000000000018036c0\n   0    218.209 133 63 : 9afc00000000000000000000000000000000000000000000000000001c877740\n   0    219.209 133 63 : c6fc0000000000000000000000000000000000000000000000000000085c16c0\n   0    220.209 133  2 : 5308ffdfff3fd9ffdffdffdfffff5fffff9fffffdffdd7bbbb9797a3ba608300\n   0    221.209 133  4 : 9a10fffbfd5ffdfffff400001400b9a9ffdffdffdffd5fbb96aabfffc3e45940\n";
+
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const state = {
+  files: [], msgs: [], ctx: null, view: [], sel: 0, isSample: false, errors: [],
+  types: new Set(), prns: new Set(), crcOnly: false, showSpare: true,
+  fields: [], pinned: null, hover: null, hoverBit: null, hoverCol: null,
+};
+
+/* ---------- loading ---------- */
+
+function loadTexts(list, isSample) {
+  const msgs = [], errors = [], files = [];
+  let fmtSeen = new Set();
+  for (const { name, text } of list) {
+    const r = parseFile(text);
+    r.msgs.forEach((m) => (m.file = name));
+    r.errors.forEach((e) => (e.file = name));
+    msgs.push(...r.msgs); errors.push(...r.errors);
+    if (r.format) fmtSeen.add(r.format);
+    files.push({ name, count: r.msgs.length, comments: r.comments, format: r.format });
+  }
+  // Absolute-time files sort into one timeline; receiver-time files keep per-file order.
+  if (list.length > 1) msgs.sort((a, b) => a.tow - b.tow || a.prn - b.prn);
+  msgs.forEach((m, i) => (m.index = i));
+  Object.assign(state, { files, msgs, errors, ctx: buildContext(msgs), isSample, sel: 0, pinned: null, hover: null, types: new Set(), prns: new Set(), crcOnly: false });
+  state.formats = fmtSeen;
+  applyFilters();
+  renderSummary();
+  renderFilters();
+  select(state.view.length ? state.view[0] : null, false, true);
+}
+
+$("#open").addEventListener("click", () => $("#file").click());
+
+// theme: auto (system) -> light -> dark; the choice is remembered per browser
+const ICON = (d) => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">' + d + '</svg>';
+const THEMES = {
+  auto: ["Auto", "follows your system setting", ICON('<circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/>')],
+  light: ["Light", "light", ICON('<circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1"/>')],
+  dark: ["Dark", "dark", ICON('<path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z"/>')],
+};
+function applyTheme(mode) {
+  if (mode === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", mode);
+  const [label, tip, icon] = THEMES[mode];
+  $("#theme").innerHTML = icon + "<span>" + label + "</span>";
+  $("#theme").title = "Color theme: " + tip + " (click to change)";
+}
+let themeMode = "auto";
+try { const saved = localStorage.getItem("sbas-explorer-theme"); if (saved in THEMES) themeMode = saved; } catch (e) {}
+applyTheme(themeMode);
+$("#theme").addEventListener("click", () => {
+  themeMode = { auto: "light", light: "dark", dark: "auto" }[themeMode];
+  applyTheme(themeMode);
+  try { localStorage.setItem("sbas-explorer-theme", themeMode); } catch (e) {}
+});
+$("#file").addEventListener("change", async (e) => {
+  const fl = [...e.target.files];
+  if (fl.length) loadTexts(await Promise.all(fl.map(async (f) => ({ name: f.name, text: await f.text() }))), false);
+  e.target.value = "";
+});
+$("#sample").addEventListener("click", () => loadTexts([{ name: SAMPLE_NAME, text: SAMPLE }], true));
+let dragDepth = 0;
+document.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; document.body.classList.add("drop-active"); });
+document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("drop-active"); } });
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", async (e) => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("drop-active");
+  const fl = [...(e.dataTransfer?.files || [])];
+  if (fl.length) loadTexts(await Promise.all(fl.map(async (f) => ({ name: f.name, text: await f.text() }))), false);
+});
+document.addEventListener("paste", (e) => {
+  if (e.target.closest && e.target.closest("input, textarea")) return;
+  const text = e.clipboardData?.getData("text");
+  if (text && /[0-9A-Fa-f]{60,}/.test(text)) loadTexts([{ name: "pasted lines", text }], false);
+});
+
+/* ---------- summary & filters ---------- */
+
+function timeLabel(m) {
+  if (m.format === "ems") return m.date.toISOString().slice(11, 19);
+  return m.week === 0 ? m.tow.toFixed(3) : m.tow.toFixed(1);
+}
+function timeLong(m) {
+  if (m.format === "ems") return m.date.toISOString().replace("T", " ").slice(0, 19) + " GPST";
+  return m.week === 0 ? `t = ${m.tow.toFixed(3)} s after recording start` : `GPS week ${m.week}, TOW ${m.tow} s`;
+}
+
+function renderSummary() {
+  const s = state, el = $("#summary");
+  if (!s.msgs.length) {
+    el.innerHTML = `<div class="stat"><span class="k">File</span><span class="v">${esc(s.files.map((f) => f.name).join(", ") || "none")}</span></div><span class="notice">No SBAS frames found. Expected lines like <span class="mono">0 8.209 133 25 : 9A66…</span> or <span class="mono">133 26 06 24 21 36 08 25 9A66…</span>.</span>`;
+    return;
+  }
+  const bad = s.msgs.filter((m) => !m.crcOk).length;
+  const prns = [...new Set(s.msgs.map((m) => m.prn))].sort((a, b) => a - b);
+  const span = s.msgs[s.msgs.length - 1].tow - s.msgs[0].tow;
+  const fmtName = [...s.formats].map((f) => (f === "ems" ? "ESA EMS" : "GNSS-SDR / RTKLIB")).join(" + ");
+  const mism = s.msgs.filter((m) => m.typeCol != null && m.typeCol !== m.mt).length;
+  el.innerHTML = `
+    ${s.isSample ? `<span class="sample-tag">Sample</span>` : ""}
+    <div class="stat"><span class="k">File${s.files.length > 1 ? "s" : ""}</span><span class="v">${esc(s.files.map((f) => f.name).join(", "))}</span></div>
+    <div class="stat"><span class="k">Format</span><span class="v">${fmtName}</span></div>
+    <div class="stat"><span class="k">GEO PRN</span><span class="v">${prns.join(", ")}</span></div>
+    <div class="stat"><span class="k">Frames</span><span class="v">${s.msgs.length}</span></div>
+    <div class="stat"><span class="k">Span</span><span class="v">${span.toFixed(0)} s</span></div>
+    <div class="stat"><span class="k">CRC failures</span><span class="v ${bad ? "bad" : "ok"}">${bad}</span></div>
+    ${mism ? `<div class="stat"><span class="k">Type column ≠ bits</span><span class="v bad">${mism}</span></div>` : ""}
+    ${s.errors.length ? `<details class="errors"><summary>${s.errors.length} line(s) not read</summary><pre>${esc(s.errors.slice(0, 20).map((e) => `${e.file}:${e.line}: ${e.why}\n  ${e.text.slice(0, 90)}`).join("\n"))}</pre></details>` : ""}`;
+}
+
+function renderFilters() {
+  const s = state, el = $("#filters");
+  if (!s.msgs.length) { el.innerHTML = ""; return; }
+  const counts = new Map();
+  for (const m of s.msgs) counts.set(m.mt, (counts.get(m.mt) || 0) + 1);
+  const prns = [...new Set(s.msgs.map((m) => m.prn))].sort((a, b) => a - b);
+  let html = `<span class="lbl">Type</span>`;
+  for (const [mt, n] of [...counts].sort((a, b) => a[0] - b[0]))
+    html += `<button class="chip" data-mt="${mt}" aria-pressed="${s.types.has(mt)}" title="${esc(MT_NAMES[mt] || "unassigned")}">MT${mt}<span class="n">${n}</span></button>`;
+  if (prns.length > 1) {
+    html += `<span class="lbl" style="margin-left:12px">GEO</span>`;
+    for (const p of prns) html += `<button class="chip" data-prn="${p}" aria-pressed="${s.prns.has(p)}">${p}</button>`;
+  }
+  html += `<button class="chip" data-crc="1" aria-pressed="${s.crcOnly}" style="margin-left:12px">CRC failures only</button>`;
+  el.innerHTML = html;
+}
+$("#filters").addEventListener("click", (e) => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  const s = state;
+  if (b.dataset.mt) { const v = +b.dataset.mt; s.types.has(v) ? s.types.delete(v) : s.types.add(v); }
+  else if (b.dataset.prn) { const v = +b.dataset.prn; s.prns.has(v) ? s.prns.delete(v) : s.prns.add(v); }
+  else if (b.dataset.crc) s.crcOnly = !s.crcOnly;
+  const cur = s.msgs[s.sel];
+  applyFilters(); renderFilters();
+  select(cur && s.view.includes(cur.index) ? cur.index : s.view.length ? s.view[0] : null);
+});
+
+function applyFilters() {
+  const s = state;
+  s.view = s.msgs.filter((m) => (!s.types.size || s.types.has(m.mt)) && (!s.prns.size || s.prns.has(m.prn)) && (!s.crcOnly || !m.crcOk)).map((m) => m.index);
+  s.summaries = s.summaries && s.summaries.length === s.msgs.length ? s.summaries : new Array(s.msgs.length);
+  const list = $("#list");
+  list.innerHTML = s.view.length ? `<div style="height:${s.view.length * ROW}px"></div>` : `<div class="empty">No messages match the filters.</div>`;
+  list.scrollTop = 0;
+  drawRows();
+}
+
+/* ---------- virtualised message list ---------- */
+
+const ROW = 32;
+function drawRows() {
+  const s = state, list = $("#list");
+  if (!s.view.length) return;
+  const top = list.scrollTop, h = list.clientHeight || 600;
+  const a = Math.max(0, Math.floor(top / ROW) - 8), b = Math.min(s.view.length, Math.ceil((top + h) / ROW) + 8);
+  const spacer = list.firstElementChild;
+  [...list.querySelectorAll(".row")].forEach((r) => r.remove());
+  let html = "";
+  for (let i = a; i < b; i++) {
+    const m = s.msgs[s.view[i]];
+    if (s.summaries[m.index] == null) { try { s.summaries[m.index] = summarize(m, s.ctx); } catch (e) { s.summaries[m.index] = ""; } }
+    html += `<div class="row${m.index === s.sel ? " sel" : ""}" style="top:${i * ROW}px" data-i="${m.index}" role="option" aria-selected="${m.index === s.sel}">
+      <span class="t">${timeLabel(m)}</span><span class="p">${m.prn}</span><span class="mt">${m.mt}</span>
+      <span class="s">${esc(s.summaries[m.index] || MT_NAMES[m.mt] || "")}</span><span class="${m.crcOk ? "crc-ok" : "crc-bad"}" title="${m.crcOk ? "CRC ok" : "CRC failed"}">${m.crcOk ? "✓" : "✗"}</span></div>`;
+  }
+  spacer.insertAdjacentHTML("afterend", html);
+}
+$("#list").addEventListener("scroll", () => requestAnimationFrame(drawRows));
+$("#list").addEventListener("click", (e) => { const r = e.target.closest(".row"); if (r) select(+r.dataset.i); });
+$("#list").addEventListener("keydown", (e) => {
+  const s = state; const pos = s.view.indexOf(s.sel);
+  let next = null;
+  if (e.key === "ArrowDown") next = s.view[Math.min(s.view.length - 1, pos + 1)];
+  else if (e.key === "ArrowUp") next = s.view[Math.max(0, pos - 1)];
+  else if (e.key === "PageDown") next = s.view[Math.min(s.view.length - 1, pos + 15)];
+  else if (e.key === "PageUp") next = s.view[Math.max(0, pos - 15)];
+  if (next != null) { e.preventDefault(); select(next, true); }
+});
+function scrollToSel() {
+  const s = state, list = $("#list"); const pos = s.view.indexOf(s.sel);
+  if (pos < 0) return;
+  const y = pos * ROW;
+  if (y < list.scrollTop) list.scrollTop = y;
+  else if (y + ROW > list.scrollTop + list.clientHeight) list.scrollTop = y - list.clientHeight + ROW;
+}
+
+/* ---------- detail ---------- */
+
+const KIND_CLASS = { header: "k-h", crc: "k-c", spare: "k-s", pad: "k-p" };
+
+const COL_INFO = {
+  week: (m) => ({ name: "GPS week", text: m.week === 0 ? "0 here: GNSS-SDR writes 0 when it has no absolute time. The next column is then seconds since the recording started, not GPS time of week." : "GPS week number of the time tag." }),
+  tow: (m) => ({ name: m.week === 0 ? "Receiver time" : "Time of week", text: m.week === 0 ? `${m.tow} s since the start of the recording, when the receiver finished decoding this frame. SBAS frames arrive once per second.` : `GPS time of week in seconds: ${m.tow} s.` }),
+  prn: (m) => ({ name: "GEO PRN", text: `PRN ${m.prn} of the geostationary satellite that broadcast the frame. Masks and corrections are tracked separately for each GEO.` }),
+  type: (m) => ({ name: "Message type column", text: m.typeCol === m.mt ? `MT${m.typeCol}, as written by the receiver. It matches the 6-bit type field inside the frame.` : `The file says MT${m.typeCol} but the frame bits say MT${m.mt}. The explorer trusts the bits.` }),
+  sep: () => ({ name: "Separator", text: "Colon separating the time tag from the frame, in the GNSS-SDR and RTKLIB format." }),
+  hex: (m) => ({ name: "Frame (hex)", text: `${m.hex.length} hexadecimal digits = ${m.nbits} bits: the 250-bit SBAS frame plus ${m.nbits - 250} padding bits. The bit map below breaks it into fields.` }),
+  yy: (m) => ({ name: "Year", text: `Two-digit year (${m.date.getUTCFullYear()}). The EMS time tag is in GPS time.` }),
+  mon: () => ({ name: "Month", text: "Month of the time tag." }),
+  day: () => ({ name: "Day", text: "Day of month of the time tag." }),
+  hh: () => ({ name: "Hour", text: "Hour of the time tag, GPS time." }),
+  min: () => ({ name: "Minute", text: "Minute of the time tag." }),
+  ss: () => ({ name: "Second", text: "Second of the time tag. EMS files give whole seconds." }),
+};
+
+function select(i, keyboard, pinFirst) {
+  const s = state;
+  if (i == null || !s.msgs[i]) { s.sel = -1; $("#detail").innerHTML = `<div class="sec empty">Select a message.</div>`; drawRows(); return; }
+  s.sel = i; s.pinned = null; s.hover = null; s.hoverBit = null; s.hoverCol = null;
+  const m = s.msgs[i];
+  s.fields = decodeMessage(m, s.ctx);
+  // colour assignment: data fields cycle six tints in order
+  let c = 0;
+  for (const f of s.fields) f.cls = KIND_CLASS[f.kind] || `k-t${c++ % 6}`;
+  s.bitField = new Int16Array(m.nbits).fill(-1);
+  s.fields.forEach((f, k) => { for (let b = f.start; b < f.start + f.len && b < m.nbits; b++) s.bitField[b] = k; });
+  if (pinFirst) {
+    const k = s.fields.findIndex((f) => f.kind === "slot" && f.sat && f.sat.name);
+    s.pinned = k >= 0 ? k : s.fields.findIndex((f) => f.kind === "data");
+  }
+  renderDetail();
+  if (s.pinned != null) setHighlight(s.pinned);
+  drawRows();
+  if (keyboard) scrollToSel();
+}
+
+function renderDetail() {
+  const s = state, m = s.msgs[s.sel];
+  const typeOk = m.typeCol == null || m.typeCol === m.mt;
+  const preOk = PREAMBLES.includes(m.preamble);
+  const cols = m.cols.map(([k, v], j) => `<span class="col" data-col="${j}">${esc(v)}</span>`).join(" ");
+  const per = bitsPerRow();
+  let bits = "";
+  for (let r = 0; r < m.nbits; r += per) {
+    bits += `<span class="off">${r}</span>`;
+    for (let b = r; b < r + per; b++) {
+      if (b >= m.nbits) { bits += `<span></span>`; continue; }
+      const f = s.fields[s.bitField[b]];
+      const isMask = f && f.kind === "mask";
+      bits += `<span class="bit ${f ? f.cls : ""}${m.bits[b] ? " one" : ""}${isMask && m.bits[b] ? " mask-on" : ""}${b % 8 === 0 && b % per ? " byte-start" : ""}" data-b="${b}">${m.bits[b]}</span>`;
+    }
+  }
+  $("#detail").innerHTML = `
+    <div class="sec">
+      <div class="msg-title">
+        <h3>MT${m.mt} · ${esc(MT_NAMES[m.mt] || "Unassigned type")}</h3>
+        <span class="meta">GEO ${m.prn} · ${esc(timeLong(m))}</span>
+        <span class="badge ${m.crcOk ? "ok" : "bad"}">${m.crcOk ? "CRC ok" : "CRC failed"}</span>
+        ${preOk ? "" : `<span class="badge bad">Bad preamble</span>`}
+        ${typeOk ? "" : `<span class="badge warn">Type column says MT${m.typeCol}</span>`}
+      </div>
+    </div>
+    <div class="sec">
+      <h2>File line <span class="aside">${esc(m.file)}, line ${m.line} · tap a column</span></h2>
+      <div class="rawline" id="rawline">${cols}</div>
+    </div>
+    <div class="sec">
+      <h2>Bits <span class="aside">${m.nbits} bits, bit 0 first · hover to explore, click to pin</span></h2>
+      <div class="bitwrap"><div class="bits${per === 16 ? " narrow" : ""}" id="bits">${bits}</div></div>
+      <div class="legend">
+        <span><i style="background:var(--th)"></i>Frame header</span>
+        <span><i style="background:var(--t0)"></i><i style="background:var(--t1)"></i><i style="background:var(--t2)"></i>Data fields</span>
+        <span><i style="background:repeating-linear-gradient(135deg,var(--ts) 0 3px,var(--hatch) 3px 5px)"></i>Spare</span>
+        <span><i style="background:var(--tc)"></i>CRC-24Q</span>
+        ${m.nbits > 250 ? `<span><i style="border:1px dashed var(--line)"></i>Padding</span>` : ""}
+      </div>
+    </div>
+    <div class="sec inspector" id="inspector"></div>
+    <div class="sec">
+      <h2>Fields <label class="toggle"><input type="checkbox" id="spare" ${s.showSpare ? "checked" : ""}> Show spare and padding</label></h2>
+      <div class="tablewrap"><table id="ftable"></table></div>
+    </div>`;
+  renderTable();
+  renderInspector();
+  $("#spare").addEventListener("change", (e) => { s.showSpare = e.target.checked; renderTable(); });
+}
+
+function bitsPerRow() { return window.matchMedia("(max-width: 640px)").matches ? 16 : 32; }
+let lastPer = null;
+window.addEventListener("resize", () => {
+  const per = bitsPerRow();
+  if (lastPer !== null && per !== lastPer && state.sel >= 0) { const keep = state.pinned; renderDetail(); state.pinned = keep; if (keep != null) setHighlight(keep); }
+  lastPer = per;
+});
+
+function binText(f) {
+  if (f.bitsText == null) return `${f.len} bits`;
+  if (f.len <= 32) return f.bitsText;
+  return f.bitsText.slice(0, 12) + "…" + f.bitsText.slice(-8);
+}
+function valueText(f) {
+  if (f.raw == null) return "";
+  if (f.value == null) return "";
+  const v = Math.abs(f.value) >= 1e6 ? f.value.toFixed(2) : fmt(f.value, 8);
+  return `${v}${f.unit ? " " + f.unit : ""}`;
+}
+
+function renderTable() {
+  const s = state;
+  let html = `<thead><tr><th>Field</th><th>Bits</th><th>Binary</th><th>Raw</th><th>Value</th><th>Meaning</th></tr></thead><tbody>`;
+  let lastGroup = null;
+  s.fields.forEach((f, k) => {
+    if (!s.showSpare && (f.kind === "spare" || f.kind === "pad")) return;
+    const g = f.groupLabel || f.group;
+    if (g !== lastGroup) { html += `<tr class="grp"><td colspan="6">${esc(g)}</td></tr>`; lastGroup = g; }
+    html += `<tr class="f ${f.cls}${s.pinned === k ? " pinned" : ""}" data-f="${k}" tabindex="0">
+      <td>${esc(f.name)}</td>
+      <td class="num">${f.start}${f.len > 1 ? "–" + (f.start + f.len - 1) : ""}</td>
+      <td class="bin">${esc(binText(f))}</td>
+      <td class="num">${f.raw == null ? "" : f.raw}</td>
+      <td class="num">${esc(valueText(f))}</td>
+      <td>${esc(f.meaningText)}</td></tr>`;
+  });
+  $("#ftable").innerHTML = html + "</tbody>";
+}
+
+function viaHtml(label, via) {
+  if (!via) return "";
+  return ` <button class="link" data-goto="${via.index}">${esc(label)} at ${esc(timeLabel(via))}${via.format === "ems" ? "" : " s"} (line ${via.line})</button>`;
+}
+
+function renderInspector() {
+  const s = state, m = s.msgs[s.sel], el = $("#inspector");
+  if (!el) return;
+  if (s.hoverCol != null) {
+    const [k, v] = m.cols[s.hoverCol];
+    const info = COL_INFO[k] ? COL_INFO[k](m) : { name: k, text: "" };
+    el.innerHTML = `<div class="insp-head"><strong>${esc(info.name)}</strong><span class="mono">${esc(v.length > 24 ? v.slice(0, 24) + "…" : v)}</span></div><p class="insp-desc">${esc(info.text)}</p>`;
+    return;
+  }
+  const k = s.hover != null ? s.hover : s.pinned;
+  if (k == null) {
+    el.innerHTML = `<div class="insp-head"><strong>Inspector</strong><span>Hover or tap any bit, field or column to see what it means.</span></div>`;
+    return;
+  }
+  const f = s.fields[k];
+  const signedNote = f.signed ? " (two's complement)" : "";
+  let bitNote = "";
+  if (s.hover != null && s.hoverBit != null && f.bitLabel) {
+    const i = s.hoverBit - f.start;
+    bitNote = `<div><dt>This bit</dt><dd>${esc(f.bitLabel(i))} → ${m.bits[s.hoverBit] ? "set" : "not set"}</dd></div>`;
+  }
+  let via = "";
+  if (f.sat && f.sat.via) via = `<p class="via">Slot ${f.slotResolved ?? f.raw} resolved through the PRN mask:${viaHtml("MT1", f.sat.via)}${f.sat.beyond ? ` · the mask has ${f.sat.size} satellites, so this slot is filler.` : ""}</p>`;
+  else if (f.sat && f.sat.missing) via = `<p class="via">Cannot resolve the slot: ${esc(f.sat.missing)}.</p>`;
+  if (f.igp && f.igp.via) via = `<p class="via">Grid point ${f.igpMaskIndex + 1} of the band mask${f.igp.coords ? ` (${latLonText(f.igp.coords)})` : ""}:${viaHtml("MT18", f.igp.via)}${f.igp.beyond ? ` · the mask has ${f.igp.size} points, so this entry is filler.` : ""}</p>`;
+  else if (f.igp && f.igp.missing) via = `<p class="via">Cannot place this grid point: ${esc(f.igp.missing)}. MT18 masks repeat every few minutes; a longer recording will usually contain one.</p>`;
+  el.innerHTML = `
+    <div class="insp-head"><strong>${esc(f.name)}</strong><span>${esc(f.groupLabel || f.group || "")}</span>${s.pinned === k && s.hover == null ? `<span class="pin-note">Pinned · click again to release</span>` : ""}</div>
+    <dl class="insp-grid">
+      <div><dt>Bits</dt><dd>${f.start}–${f.start + f.len - 1} (${f.len} bit${f.len > 1 ? "s" : ""})</dd></div>
+      <div><dt>Binary</dt><dd>${esc(f.bitsText != null ? f.bitsText : binText(f))}</dd></div>
+      ${f.raw != null ? `<div><dt>Integer</dt><dd>${f.raw}${signedNote}</dd></div>` : ""}
+      ${f.scale != null && f.raw != null ? `<div><dt>Scale</dt><dd>× ${fmt(f.scale, 12)}${f.unit ? " " + esc(f.unit) : ""}</dd></div><div><dt>Value</dt><dd>${esc(valueText(f))}</dd></div>` : ""}
+      ${f.meaningText ? `<div style="grid-column: span 2"><dt>Meaning</dt><dd class="meaning">${esc(f.meaningText)}</dd></div>` : ""}
+      ${bitNote}
+    </dl>
+    <p class="insp-desc">${esc(f.desc)}</p>${via}`;
+}
+
+function setHighlight(k) {
+  document.querySelectorAll(".bit.hl").forEach((e) => e.classList.remove("hl"));
+  document.querySelectorAll("tr.f.hl").forEach((e) => e.classList.remove("hl"));
+  if (k == null) return;
+  const f = state.fields[k];
+  const bitsEl = $("#bits");
+  for (let b = f.start; b < f.start + f.len; b++) bitsEl.querySelector(`[data-b="${b}"]`)?.classList.add("hl");
+  $(`tr.f[data-f="${k}"]`)?.classList.add("hl");
+}
+
+const detailEl = $("#detail");
+detailEl.addEventListener("mouseover", (e) => {
+  const s = state;
+  const bit = e.target.closest(".bit"), row = e.target.closest("tr.f"), col = e.target.closest(".col");
+  if (bit) {
+    const b = +bit.dataset.b; const k = s.bitField[b];
+    document.querySelectorAll(".bit.cur").forEach((x) => x.classList.remove("cur"));
+    if (s.fields[k] && s.fields[k].bitLabel) bit.classList.add("cur");
+    if (k !== s.hover || s.hoverBit !== b) { s.hover = k; s.hoverBit = b; s.hoverCol = null; setHighlight(k); renderInspector(); }
+  } else if (row) {
+    const k = +row.dataset.f;
+    if (k !== s.hover) { s.hover = k; s.hoverBit = null; s.hoverCol = null; setHighlight(k); renderInspector(); }
+  } else if (col) {
+    const j = +col.dataset.col;
+    if (j !== s.hoverCol) { s.hoverCol = j; s.hover = null; setHighlight(null); renderInspector(); }
+  }
+});
+detailEl.addEventListener("mouseleave", () => { const s = state; s.hover = null; s.hoverBit = null; s.hoverCol = null; document.querySelectorAll(".bit.cur").forEach((x) => x.classList.remove("cur")); setHighlight(s.pinned); renderInspector(); });
+detailEl.addEventListener("mouseout", (e) => {
+  const s = state;
+  if (e.relatedTarget && (e.relatedTarget.closest?.(".bit, tr.f, .col, #inspector"))) return;
+  if (s.hover != null || s.hoverCol != null) { s.hover = null; s.hoverBit = null; s.hoverCol = null; document.querySelectorAll(".bit.cur").forEach((x) => x.classList.remove("cur")); setHighlight(s.pinned); renderInspector(); }
+});
+detailEl.addEventListener("click", (e) => {
+  const s = state;
+  const go = e.target.closest("[data-goto]");
+  if (go) { const i = +go.dataset.goto; if (!state.view.includes(i)) { s.types.clear(); s.prns.clear(); s.crcOnly = false; applyFilters(); renderFilters(); } select(i, true); return; }
+  const bit = e.target.closest(".bit"), row = e.target.closest("tr.f"), col = e.target.closest(".col");
+  if (col) {
+    document.querySelectorAll(".col.on").forEach((x) => x.classList.remove("on"));
+    col.classList.add("on"); s.hoverCol = +col.dataset.col; s.hover = null; renderInspector(); return;
+  }
+  const k = bit ? s.bitField[+bit.dataset.b] : row ? +row.dataset.f : null;
+  if (k == null || k < 0) return;
+  s.pinned = s.pinned === k ? null : k;
+  s.hover = null; s.hoverCol = null;
+  if (bit) s.hoverBit = +bit.dataset.b;
+  document.querySelectorAll("tr.f.pinned").forEach((x) => x.classList.remove("pinned"));
+  if (s.pinned != null) $(`tr.f[data-f="${s.pinned}"]`)?.classList.add("pinned");
+  setHighlight(s.pinned);
+  renderInspector();
+});
+detailEl.addEventListener("keydown", (e) => {
+  const row = e.target.closest("tr.f");
+  if (row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); row.click(); }
+});
+
+loadTexts([{ name: SAMPLE_NAME, text: SAMPLE }], true);
+</script>
+</body></html>
